@@ -81,66 +81,25 @@ def pipeline_sidebar(step):
         else:
             st.sidebar.info(s)
 
-# ---------- KPI SQL ENGINE ----------
-def generate_dynamic_sql(row):
-    metric = str(row.get("metric","")).lower()
-    col = row.get("dimension","")
-    group = row.get("group_by","")
-    flt = row.get("filter","")
-    order = row.get("order_by","")
-    limit = row.get("limit","")
+# ---------- SQL ----------
+def generate_sql(row):
+    m = str(row["metric"]).lower()
+    c = row["dimension"]
 
-    if metric == "sum":
-        select = f"SUM({col}) as value"
-    elif metric == "avg":
-        select = f"AVG({col}) as value"
-    elif metric == "count":
-        select = f"COUNT({col}) as value"
-    elif metric == "min":
-        select = f"MIN({col}) as value"
-    elif metric == "max":
-        select = f"MAX({col}) as value"
-    elif metric == "top":
-        select = f"{col}, COUNT(*) as value"
-        group = col
-        order = "value DESC"
-        limit = 1
-    else:
-        return None
-
-    sql = f"SELECT {group + ',' if group else ''} {select} FROM sales_data"
-
-    if flt:
-        sql += f" WHERE {flt}"
-    if group:
-        sql += f" GROUP BY {group}"
-    if order:
-        sql += f" ORDER BY {order}"
-    if limit:
-        sql += f" LIMIT {limit}"
-
-    return sql
-
-# ---------- VISUALIZE KPI ----------
-def visualize_kpi(df_result, kpi_name):
-    if df_result.shape[1] >= 2:
-        x = df_result.columns[0]
-        y = df_result.columns[1]
-
-        chart = st.selectbox(
-            f"{kpi_name} Chart Type",
-            ["Bar","Pie","Line"],
-            key=kpi_name
-        )
-
-        if chart == "Bar":
-            fig = px.bar(df_result, x=x, y=y)
-        elif chart == "Pie":
-            fig = px.pie(df_result, names=x, values=y)
-        else:
-            fig = px.line(df_result, x=x, y=y)
-
-        st.plotly_chart(fig, use_container_width=True)
+    if m == "sum":
+        return f"SELECT SUM({c}) as value FROM sales_data"
+    elif m == "avg":
+        return f"SELECT AVG({c}) as value FROM sales_data"
+    elif m == "count":
+        return f"SELECT COUNT({c}) as value FROM sales_data"
+    elif m == "top":
+        return f"""
+        SELECT {c}, COUNT(*) as value
+        FROM sales_data
+        GROUP BY {c}
+        ORDER BY value DESC
+        LIMIT 1
+        """
 
 # ---------- PIPELINE RUN ----------
 def run_pipeline():
@@ -157,9 +116,12 @@ def run_pipeline():
 
     for i, msg in enumerate(steps):
         st.session_state.logs.append(msg)
+
         log_box.code("\n".join(st.session_state.logs))
         progress.progress((i+1)/len(steps))
+
         pipeline_sidebar(i)
+
         time.sleep(1)
 
     st.session_state.pipeline_step = 5
@@ -187,26 +149,36 @@ if page == "Dashboard":
 
         st.dataframe(df.head())
 
+        # KPI SQL Table
         if kpi_df is not None:
-            st.subheader("🤖 KPI Results + Visuals")
+            results = []
 
             for _, row in kpi_df.iterrows():
-                kpi_name = row["kpi_name"]
-                sql = generate_dynamic_sql(row)
+                sql = generate_sql(row)
 
-                if sql:
-                    try:
-                        res = pd.read_sql(sql, conn)
+                try:
+                    res = pd.read_sql(sql, conn)
+                    val = res.iloc[0,0] if res.shape[1]==1 else res.to_dict("records")[0]
 
-                        st.markdown(f"### {kpi_name}")
-                        st.code(sql)
+                    results.append({
+                        "KPI Name": row["kpi_name"],
+                        "SQL Query": sql.strip(),
+                        "Result": val
+                    })
+                except Exception as e:
+                    results.append({
+                        "KPI Name": row["kpi_name"],
+                        "SQL Query": sql,
+                        "Result": str(e)
+                    })
 
-                        st.dataframe(res)
+            out = pd.DataFrame(results)
+            st.subheader("🤖 KPI Results with SQL")
+            st.dataframe(out)
 
-                        visualize_kpi(res, kpi_name)
-
-                    except Exception as e:
-                        st.error(f"{kpi_name}: {e}")
+        if "Amount" in df.columns:
+            fig = px.histogram(df, x="Amount")
+            st.plotly_chart(fig, use_container_width=True, config={"doubleClick":"reset"})
 
 # ---------- EDA ----------
 elif page == "EDA":
@@ -214,12 +186,11 @@ elif page == "EDA":
 
     if df is not None:
         st.write(df.shape)
-        st.dataframe(df.dtypes)
 
-        st.subheader("Missing")
+        st.subheader("Missing Values")
         st.dataframe(df.isnull().sum())
 
-        st.subheader("Stats")
+        st.subheader("Statistics")
         st.dataframe(df.describe())
 
         num = df.select_dtypes(include=["int64","float64"])
@@ -240,10 +211,10 @@ elif page == "Visualizations":
         col = st.selectbox("Column", df.columns)
 
         if pd.api.types.is_numeric_dtype(df[col]):
-            fig = px.histogram(df,x=col)
+            fig = px.histogram(df, x=col)
         else:
             tmp = df[col].value_counts().reset_index()
-            tmp.columns=[col,"count"]
+            tmp.columns = [col,"count"]
             fig = px.bar(tmp,x=col,y="count")
 
         st.plotly_chart(fig, use_container_width=True, config={"doubleClick":"reset"})
@@ -253,10 +224,10 @@ elif page == "Prediction":
     st.title("🤖 Prediction")
 
     if df is not None and "Amount" in df.columns:
-        num = df.select_dtypes(include=["int64","float64"]).columns
+        nums = df.select_dtypes(include=["int64","float64"]).columns
 
-        if len(num)>=2:
-            X_col = st.selectbox("Feature", num)
+        if len(nums)>=2:
+            X_col = st.selectbox("Feature", nums)
             X = df[[X_col]]
             y = df["Amount"]
 
