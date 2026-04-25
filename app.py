@@ -4,6 +4,7 @@ import plotly.express as px
 import numpy as np
 import sqlite3
 import time
+import requests
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
@@ -30,7 +31,7 @@ section[data-testid="stSidebar"] {
 # ---------- SIDEBAR ----------
 st.sidebar.title("🚀 AI Dashboard")
 
-pages = ["Dashboard","EDA","Visualizations","Prediction"]
+pages = ["Dashboard","EDA","Visualizations","Prediction","APIs"]
 
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
@@ -47,20 +48,27 @@ if "pipeline_step" not in st.session_state:
 if "logs" not in st.session_state:
     st.session_state.logs = []
 
-# ---------- LOAD ----------
+# ---------- DB ----------
 conn = sqlite3.connect(":memory:")
+
 df = None
 kpi_df = None
 
+# ---------- LOAD CSV ----------
 if file:
     df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
     df.columns = df.columns.str.strip()
     df.to_sql("sales_data", conn, index=False, if_exists="replace")
 
+# ---------- LOAD KPI ----------
 if kpi_file:
     kpi_df = pd.read_csv(kpi_file)
 
-# ---------- PIPELINE SIDEBAR ----------
+# ---------- LOAD API DATA ----------
+if "df" in st.session_state:
+    df = st.session_state["df"]
+
+# ---------- PIPELINE ----------
 def pipeline_sidebar(step):
     st.sidebar.markdown("## ⚙️ Data Pipeline")
     st.sidebar.markdown("---")
@@ -116,18 +124,15 @@ def run_pipeline():
 
     for i, msg in enumerate(steps):
         st.session_state.logs.append(msg)
-
         log_box.code("\n".join(st.session_state.logs))
         progress.progress((i+1)/len(steps))
-
         pipeline_sidebar(i)
-
         time.sleep(1)
 
     st.session_state.pipeline_step = 5
     st.success("✅ Pipeline Completed")
 
-# ---------- AUTO RESET ----------
+# ---------- RESET ----------
 if file or kpi_file:
     st.session_state.pipeline_step = 0
     st.session_state.logs = []
@@ -137,7 +142,7 @@ if df is not None and kpi_df is not None and st.session_state.pipeline_step == 0
     st.session_state.page = "Dashboard"
     run_pipeline()
 
-# ---------- DASHBOARD ----------
+# ================= DASHBOARD =================
 if page == "Dashboard":
     st.title("📊 Dashboard")
 
@@ -149,8 +154,9 @@ if page == "Dashboard":
 
         st.dataframe(df.head())
 
-        # KPI SQL Table
         if kpi_df is not None:
+            st.subheader("🤖 KPI Results with SQL")
+
             results = []
 
             for _, row in kpi_df.iterrows():
@@ -172,38 +178,20 @@ if page == "Dashboard":
                         "Result": str(e)
                     })
 
-            out = pd.DataFrame(results)
-            st.subheader("🤖 KPI Results with SQL")
-            st.dataframe(out)
+            st.dataframe(pd.DataFrame(results))
 
         if "Amount" in df.columns:
-            fig = px.histogram(df, x="Amount")
-            st.plotly_chart(fig, use_container_width=True, config={"doubleClick":"reset"})
+            st.plotly_chart(px.histogram(df, x="Amount"), use_container_width=True)
 
-# ---------- EDA ----------
+# ================= EDA =================
 elif page == "EDA":
     st.title("🔍 EDA")
 
     if df is not None:
-        st.write(df.shape)
-
-        st.subheader("Missing Values")
+        st.dataframe(df.describe())
         st.dataframe(df.isnull().sum())
 
-        st.subheader("Statistics")
-        st.dataframe(df.describe())
-
-        num = df.select_dtypes(include=["int64","float64"])
-
-        if len(num.columns)>0:
-            col = st.selectbox("Column", num.columns)
-            st.plotly_chart(px.histogram(df,x=col), use_container_width=True)
-            st.plotly_chart(px.box(df,y=col), use_container_width=True)
-
-        if len(num.columns)>1:
-            st.plotly_chart(px.imshow(num.corr(), text_auto=True), use_container_width=True)
-
-# ---------- VISUAL ----------
+# ================= VISUAL =================
 elif page == "Visualizations":
     st.title("📈 Visualizations")
 
@@ -213,13 +201,13 @@ elif page == "Visualizations":
         if pd.api.types.is_numeric_dtype(df[col]):
             fig = px.histogram(df, x=col)
         else:
-            tmp = df[col].value_counts().reset_index()
-            tmp.columns = [col,"count"]
-            fig = px.bar(tmp,x=col,y="count")
+            temp = df[col].value_counts().reset_index()
+            temp.columns = [col,"count"]
+            fig = px.bar(temp, x=col, y="count")
 
-        st.plotly_chart(fig, use_container_width=True, config={"doubleClick":"reset"})
+        st.plotly_chart(fig, use_container_width=True)
 
-# ---------- PREDICTION ----------
+# ================= PREDICTION =================
 elif page == "Prediction":
     st.title("🤖 Prediction")
 
@@ -242,10 +230,38 @@ elif page == "Prediction":
                 pred = model.predict([[val]])
                 st.success(f"₹ {int(pred[0]):,}")
 
-            xr = np.linspace(df[X_col].min(), df[X_col].max(),100)
-            yr = model.predict(xr.reshape(-1,1))
+# ================= APIs =================
+elif page == "APIs":
+    st.title("🌐 API Integration")
 
-            fig = px.scatter(df, x=X_col, y="Amount")
-            fig.add_scatter(x=xr, y=yr, mode="lines")
+    api_options = {
+        "Users": "https://jsonplaceholder.typicode.com/users",
+        "Posts": "https://jsonplaceholder.typicode.com/posts",
+        "Products": "https://dummyjson.com/products"
+    }
 
-            st.plotly_chart(fig, use_container_width=True)
+    selected = st.selectbox("Select API", list(api_options.keys()))
+    url = api_options[selected]
+
+    if st.button("Fetch API Data"):
+        try:
+            res = requests.get(url)
+            data = res.json()
+
+            if isinstance(data, dict) and "products" in data:
+                df_api = pd.DataFrame(data["products"])
+            else:
+                df_api = pd.DataFrame(data)
+
+            st.success("API Loaded")
+            st.dataframe(df_api.head())
+
+            df_api.columns = df_api.columns.str.strip()
+            df_api.to_sql("sales_data", conn, index=False, if_exists="replace")
+
+            st.session_state["df"] = df_api
+
+            st.info("Go to Dashboard to analyze")
+
+        except Exception as e:
+            st.error(str(e))
