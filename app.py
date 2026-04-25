@@ -8,11 +8,14 @@ import time
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Data Analyst Agent", layout="wide")
 
-st.title("🤖 Production-Grade AI Data Analyst Agent")
+st.title("🤖 AI Data Analyst Agent (Production Ready)")
+st.write("Upload CSV/Excel → Get automatic KPIs, insights, and dashboards")
 
+# ---------------- API KEY ----------------
 api_key = st.text_input("Enter OpenAI API Key", type="password")
 
-file = st.file_uploader("Upload CSV / Excel", type=["csv", "xlsx"])
+# ---------------- FILE UPLOAD ----------------
+file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
 
 # ---------------- SIDEBAR PIPELINE ----------------
 st.sidebar.title("🤖 Processing Pipeline")
@@ -42,25 +45,33 @@ def load_file(file):
     else:
         return pd.read_excel(file)
 
-# ---------------- COLUMN CLASSIFICATION ----------------
+# ---------------- COLUMN DETECTION ----------------
 def detect_columns(df):
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
-    categorical_cols = df.select_dtypes(include="object").columns.tolist()
+    numeric = df.select_dtypes(include=["number"]).columns.tolist()
+    categorical = df.select_dtypes(include=["object", "string"]).columns.tolist()
+    datetime = df.select_dtypes(include=["datetime"]).columns.tolist()
 
-    return numeric_cols, datetime_cols, categorical_cols
+    return numeric, categorical, datetime
 
-# ---------------- CLEANING ----------------
+# ---------------- CLEAN DATA (CRASH PROOF) ----------------
 def clean_data(df):
     df = df.copy()
 
     df = df.drop_duplicates()
 
     for col in df.columns:
-        if df[col].dtype == "object":
-            df[col].fillna("Unknown", inplace=True)
-        else:
-            df[col].fillna(df[col].median(), inplace=True)
+
+        # STRING / CATEGORY
+        if pd.api.types.is_string_dtype(df[col]) or df[col].dtype == "object":
+            df[col] = df[col].fillna("Unknown")
+
+        # NUMERIC
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = df[col].fillna(df[col].median())
+
+        # DATETIME
+        elif pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = df[col].fillna(method="ffill")
 
     return df
 
@@ -71,6 +82,7 @@ def generate_kpis(df, numeric_cols):
     for col in numeric_cols:
         kpis[f"Total {col}"] = df[col].sum()
         kpis[f"Average {col}"] = df[col].mean()
+        kpis[f"Median {col}"] = df[col].median()
         kpis[f"Max {col}"] = df[col].max()
 
     return kpis
@@ -84,28 +96,27 @@ def trend_engine(df, numeric_cols):
 
     return trends
 
-# ---------------- SMART GROUPING ----------------
-def smart_grouping(df, categorical_cols, numeric_cols):
+# ---------------- GROUPING ENGINE ----------------
+def grouping_engine(df, categorical_cols, numeric_cols):
     results = {}
 
     for cat in categorical_cols:
         for num in numeric_cols:
             try:
-                grouped = df.groupby(cat)[num].sum().sort_values(ascending=False)
-                results[f"{cat} vs {num}"] = grouped.head(5)
+                results[f"{cat} → {num}"] = df.groupby(cat)[num].sum().sort_values(ascending=False).head(5)
             except:
                 pass
 
     return results
 
-# ---------------- INSIGHTS (AI) ----------------
+# ---------------- AI INSIGHTS ----------------
 def generate_insights(df, api_key):
     openai.api_key = api_key
 
     prompt = f"""
 You are a senior data analyst.
 
-Dataset summary:
+Dataset:
 Columns: {df.columns.tolist()}
 Shape: {df.shape}
 
@@ -125,7 +136,7 @@ Give:
 
     return response["choices"][0]["message"]["content"]
 
-# ---------------- VISUALIZATION ----------------
+# ---------------- CHARTS ----------------
 def create_charts(df, numeric_cols):
     charts = []
 
@@ -135,7 +146,7 @@ def create_charts(df, numeric_cols):
 
     return charts
 
-# ---------------- MAIN ----------------
+# ---------------- MAIN APP ----------------
 if file is not None:
 
     step(0)
@@ -146,12 +157,11 @@ if file is not None:
 
     step(1)
 
-    numeric_cols, datetime_cols, categorical_cols = detect_columns(df)
+    numeric_cols, categorical_cols, datetime_cols = detect_columns(df)
 
-    st.subheader("🧠 Column Detection")
     st.write("Numeric:", numeric_cols)
-    st.write("Datetime:", datetime_cols)
     st.write("Categorical:", categorical_cols)
+    st.write("Datetime:", datetime_cols)
 
     step(2)
 
@@ -175,9 +185,9 @@ if file is not None:
     st.subheader("📈 Trends")
     st.json(trends)
 
-    grouping = smart_grouping(df, categorical_cols, numeric_cols)
+    grouping = grouping_engine(df, categorical_cols, numeric_cols)
 
-    st.subheader("🧑‍🤝‍🧑 Business Breakdown")
+    st.subheader("🧑‍🤝‍🧑 Top Group Insights")
     for k, v in list(grouping.items())[:3]:
         st.write(k)
         st.write(v)
@@ -200,4 +210,4 @@ if file is not None:
     st.sidebar.success("✅ Analysis Complete")
 
 else:
-    st.info("Upload file to start analysis")
+    st.info("Upload a CSV or Excel file to start analysis")
