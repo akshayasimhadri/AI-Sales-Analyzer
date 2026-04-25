@@ -17,17 +17,17 @@ body {
     color: white;
 }
 .stButton button {
-    width: 100%;
-    border-radius: 10px;
+    border-radius: 8px;
+}
+h1, h2, h3 {
+    color: #e2e8f0;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------- SIDEBAR ----------
 st.sidebar.title("🚀 AI Dashboard")
-
 pages = ["Dashboard","EDA","Visualizations","Prediction"]
-
 page = st.sidebar.radio("Navigate", pages)
 
 file = st.sidebar.file_uploader("Upload Data", type=["csv","xlsx"])
@@ -38,7 +38,7 @@ conn = sqlite3.connect(":memory:")
 df = None
 kpi_df = None
 
-# ---------- LOAD DATA ----------
+# ---------- LOAD ----------
 if file:
     df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
     df.columns = df.columns.str.strip()
@@ -47,7 +47,7 @@ if file:
 if kpi_file:
     kpi_df = pd.read_csv(kpi_file)
 
-# ---------- SQL ENGINE ----------
+# ---------- SQL ----------
 def generate_sql(row):
     m = str(row["metric"]).lower()
     c = row["dimension"]
@@ -74,27 +74,48 @@ def auto_visualize(df):
     numeric = df.select_dtypes(include=["int64","float64"]).columns
     categorical = df.select_dtypes(include=["object"]).columns
 
-    for col in numeric[:3]:
+    # NUMERIC
+    for i, col in enumerate(numeric[:3]):
+        st.markdown(f"### 📈 {col} Distribution")
+
+        if st.button(f"🔄 Reset {col}", key=f"num_{i}"):
+            st.rerun()
+
         st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
 
-    for col in categorical[:3]:
+    # CATEGORICAL
+    for i, col in enumerate(categorical[:3]):
+        st.markdown(f"### 📊 {col} Count")
+
+        if st.button(f"🔄 Reset {col}", key=f"cat_{i}"):
+            st.rerun()
+
         temp = df[col].value_counts().reset_index()
         temp.columns = [col, "count"]
 
-        st.plotly_chart(px.bar(temp, x=col, y="count"), use_container_width=True)
+        st.plotly_chart(px.bar(temp, x=col, y="count", text="count"), use_container_width=True)
         st.plotly_chart(px.pie(temp, names=col, values="count"), use_container_width=True)
 
+    # CORRELATION
     if len(numeric) > 1:
+        st.markdown("### 🔥 Correlation Heatmap")
+
+        if st.button("🔄 Reset Correlation"):
+            st.rerun()
+
         st.plotly_chart(px.imshow(df[numeric].corr(), text_auto=True), use_container_width=True)
 
 # ---------- SMART BUILDER ----------
 def smart_builder(df):
     st.subheader("🎛️ Build Your Own Chart")
 
-    x = st.selectbox("X Axis", df.columns)
-    y = st.selectbox("Y Axis", df.columns)
+    c1, c2, c3 = st.columns(3)
+    x = c1.selectbox("X Axis", df.columns)
+    y = c2.selectbox("Y Axis", df.columns)
+    chart = c3.selectbox("Chart Type", ["Bar","Line","Scatter","Box"])
 
-    chart = st.selectbox("Chart Type", ["Bar","Line","Scatter","Box"])
+    if st.button("🔄 Reset Chart"):
+        st.rerun()
 
     if chart == "Bar":
         fig = px.bar(df, x=x, y=y)
@@ -109,20 +130,22 @@ def smart_builder(df):
 
 # ================= DASHBOARD =================
 if page == "Dashboard":
-    st.title("📊 Dashboard")
+    st.title("📊 AI Sales Dashboard")
 
     if df is not None:
+        # Metrics
         c1,c2,c3 = st.columns(3)
-
         c1.metric("Rows", len(df))
         c2.metric("Columns", len(df.columns))
         c3.metric("Total Sales", int(df["Amount"].sum()) if "Amount" in df.columns else "N/A")
 
+        st.divider()
         st.dataframe(df.head())
 
-        # KPI
+        # KPI SECTION
         if kpi_df is not None:
-            st.subheader("🤖 KPI Results")
+            st.divider()
+            st.subheader("🤖 KPI Insights")
 
             for _, row in kpi_df.iterrows():
                 sql = generate_sql(row)
@@ -132,17 +155,29 @@ if page == "Dashboard":
 
                     st.markdown(f"### {row['kpi_name']}")
                     st.code(sql)
-                    st.dataframe(res)
 
-                    auto_visualize(res)
+                    if res.shape[1] == 2:
+                        x = res.columns[0]
+                        y = res.columns[1]
+
+                        if st.button(f"🔄 Reset {row['kpi_name']}", key=row['kpi_name']):
+                            st.rerun()
+
+                        st.plotly_chart(px.bar(res, x=x, y=y, text=y), use_container_width=True)
+                    else:
+                        st.metric(row['kpi_name'], res.iloc[0,0])
 
                 except Exception as e:
                     st.error(str(e))
 
-        # Auto Visuals
+        st.divider()
+
+        # AUTO VISUALS
         auto_visualize(df)
 
-        # Smart Builder
+        st.divider()
+
+        # BUILDER
         smart_builder(df)
 
     else:
@@ -162,6 +197,9 @@ elif page == "Visualizations":
 
     if df is not None:
         col = st.selectbox("Column", df.columns)
+
+        if st.button("🔄 Reset Visualization"):
+            st.rerun()
 
         if pd.api.types.is_numeric_dtype(df[col]):
             fig = px.histogram(df, x=col)
@@ -187,10 +225,13 @@ elif page == "Prediction":
             model = LinearRegression()
             model.fit(X,y)
 
-            st.metric("R²", f"{r2_score(y, model.predict(X)):.2f}")
+            st.metric("R² Score", f"{r2_score(y, model.predict(X)):.2f}")
 
-            val = st.slider("Input", int(df[X_col].min()), int(df[X_col].max()), int(df[X_col].mean()))
+            val = st.slider("Input Value", int(df[X_col].min()), int(df[X_col].max()), int(df[X_col].mean()))
+
+            if st.button("🔄 Reset Prediction"):
+                st.rerun()
 
             if st.button("Predict"):
                 pred = model.predict([[val]])
-                st.success(f"₹ {int(pred[0]):,}")
+                st.success(f"Predicted Sales: ₹ {int(pred[0]):,}")
