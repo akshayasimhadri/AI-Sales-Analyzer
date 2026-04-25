@@ -11,62 +11,36 @@ st.set_page_config(page_title="AI Sales Analyzer", layout="wide")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ---------- MODERN UI STYLING ----------
+# ---------- MODERN UI ----------
 st.markdown("""
 <style>
-
-/* Background */
 body {
     background: linear-gradient(135deg, #0f172a, #020617);
     color: #e2e8f0;
     font-family: 'Segoe UI', sans-serif;
 }
-
-/* Headings */
-h1, h2, h3 {
-    color: #f8fafc;
-}
-
-/* Card */
 .card {
     background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(10px);
     padding: 20px;
     border-radius: 15px;
-    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
     margin-bottom: 15px;
 }
-
-/* Buttons */
 .stButton button {
     width: 100%;
     border-radius: 10px;
     background: linear-gradient(135deg, #6366f1, #8b5cf6);
     color: white;
-    border: none;
-    font-weight: 600;
 }
-
-/* Metrics */
 [data-testid="stMetric"] {
     background: rgba(255,255,255,0.05);
     padding: 15px;
     border-radius: 12px;
 }
-
-/* Chat */
 [data-testid="stChatMessage"] {
     background: rgba(255,255,255,0.05);
     border-radius: 12px;
     padding: 12px;
-    margin-bottom: 10px;
 }
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #020617, #0f172a);
-}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,12 +74,62 @@ def detect_columns(df):
 
     return {
         "amount": find(["amount","sales","revenue","price","total"]),
-        "product": find(["product","item","product name"]),
+        "product": find(["product","item"]),
         "country": find(["country","region"]),
         "date": find(["date","order date"]),
         "quantity": find(["quantity","qty","boxes shipped","units"])
     }
 
+# ---------- KPI ENGINE ----------
+def generate_kpis(df, mapping):
+    insights = {}
+    amt = mapping["amount"]
+    prod = mapping["product"]
+    country = mapping["country"]
+    date = mapping["date"]
+
+    if not amt:
+        return {}
+
+    insights["total"] = df[amt].sum()
+    insights["average"] = df[amt].mean()
+
+    if prod:
+        insights["top_product"] = df.groupby(prod)[amt].sum().idxmax()
+
+    if country:
+        insights["top_country"] = df.groupby(country)[amt].sum().idxmax()
+
+    if date:
+        insights["trend"] = df.groupby(date)[amt].sum().reset_index()
+
+    return insights
+
+# ---------- AUTO SQL ----------
+def generate_sql(query, mapping):
+    q = query.lower()
+    amt = mapping["amount"]
+    prod = mapping["product"]
+    country = mapping["country"]
+
+    if not amt:
+        return None
+
+    if "total" in q:
+        return f"SELECT SUM({amt}) AS total_sales FROM sales_data"
+
+    elif "average" in q:
+        return f"SELECT AVG({amt}) AS avg_sales FROM sales_data"
+
+    elif "top product" in q and prod:
+        return f"SELECT {prod}, SUM({amt}) FROM sales_data GROUP BY {prod} ORDER BY SUM({amt}) DESC LIMIT 1"
+
+    elif "top country" in q and country:
+        return f"SELECT {country}, SUM({amt}) FROM sales_data GROUP BY {country} ORDER BY SUM({amt}) DESC LIMIT 1"
+
+    return None
+
+# ---------- LOAD DATA ----------
 mapping = None
 
 if file:
@@ -118,35 +142,6 @@ if file:
     if mapping["date"]:
         df[mapping["date"]] = pd.to_datetime(df[mapping["date"]], errors="coerce")
 
-# ---------- AI ----------
-def ask_ai(query):
-    query = query.lower()
-
-    if df is None:
-        return "Upload dataset first"
-
-    amt = mapping["amount"]
-    prod = mapping["product"]
-    country = mapping["country"]
-
-    if not amt:
-        return "No sales column detected"
-
-    if "total" in query:
-        return f"💰 Total Sales: ₹ {df[amt].sum():,.0f}"
-
-    elif "average" in query:
-        return f"📊 Average: ₹ {df[amt].mean():.2f}"
-
-    elif "top product" in query and prod:
-        return f"🏆 Top Product: {df.groupby(prod)[amt].sum().idxmax()}"
-
-    elif "top country" in query and country:
-        return f"🌍 Top Country: {df.groupby(country)[amt].sum().idxmax()}"
-
-    else:
-        return "Try: total, average, top product, top country"
-
 # ================== PAGES ==================
 
 # ---------- DASHBOARD ----------
@@ -154,44 +149,28 @@ if page == "Dashboard":
     st.title("📊 Dashboard")
 
     if df is not None:
-        amt = mapping["amount"]
+        kpis = generate_kpis(df, mapping)
 
-        st.subheader("📊 Business KPIs")
+        st.success("🤖 AI automatically analyzed your dataset")
+
         c1, c2, c3 = st.columns(3)
+        c1.metric("Total Sales", f"₹ {kpis.get('total',0):,.0f}")
+        c2.metric("Average", f"₹ {kpis.get('average',0):.2f}")
+        c3.metric("Records", len(df))
 
-        with c1:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.metric("Rows", len(df))
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+🏆 **Top Product:** {kpis.get('top_product','N/A')}  
+🌍 **Top Country:** {kpis.get('top_country','N/A')}
+""")
 
-        with c2:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.metric("Columns", len(df.columns))
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        with c3:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.metric("Sales", int(df[amt].sum()) if amt else 0)
-            st.markdown('</div>', unsafe_allow_html=True)
+        if "trend" in kpis:
+            fig = px.line(kpis["trend"], x=mapping["date"], y=mapping["amount"], title="Sales Trend")
+            st.plotly_chart(fig, use_container_width=True)
 
         st.dataframe(df.head())
 
-        if mapping["date"] and amt:
-            trend = df.groupby(mapping["date"])[amt].sum().reset_index()
-            fig = px.line(trend, x=mapping["date"], y=amt, title="Sales Trend")
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        if mapping["country"] and amt:
-            region = df.groupby(mapping["country"])[amt].sum().reset_index()
-            fig = px.bar(region, x=mapping["country"], y=amt, title="Sales by Country")
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
     else:
-        st.warning("Upload file")
+        st.warning("Upload dataset")
 
 # ---------- VISUALIZATION ----------
 elif page == "Visualizations":
@@ -207,17 +186,14 @@ elif page == "Visualizations":
             temp.columns = [col, "count"]
             fig = px.bar(temp, x=col, y="count")
 
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     else:
         st.warning("Upload file")
 
 # ---------- AI CHAT ----------
 elif page == "AI Chat":
-    st.title("💬 AI Chat")
-    st.markdown("### 🤖 AI Assistant")
+    st.title("💬 AI Data Assistant")
 
     if df is not None:
 
@@ -230,24 +206,19 @@ elif page == "AI Chat":
             st.session_state.messages.append({"role": "user", "content": query})
             st.chat_message("user").write(query)
 
-            answer = ask_ai(query)
+            sql = generate_sql(query, mapping)
 
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            st.chat_message("assistant").write(answer)
-
-        st.subheader("🧠 Run SQL Query")
-
-        sql_query = st.text_area("Write SQL (SELECT * FROM sales_data LIMIT 5)")
-
-        if st.button("Run Query"):
-            try:
-                result = pd.read_sql(sql_query, conn)
+            if sql:
+                result = pd.read_sql(sql, conn)
+                st.chat_message("assistant").write("📊 Result:")
                 st.dataframe(result)
-            except Exception as e:
-                st.error(e)
+            else:
+                st.chat_message("assistant").write("🤖 Try: total, average, top product")
+
+            st.session_state.messages.append({"role": "assistant", "content": "Done"})
 
     else:
-        st.warning("Upload file first")
+        st.warning("Upload dataset first")
 
 # ---------- PREDICTION ----------
 elif page == "Prediction":
@@ -264,12 +235,11 @@ elif page == "Prediction":
             model = LinearRegression()
             model.fit(X, y)
 
-            val = st.slider("Input Value", 1, 500, 100)
+            val = st.slider("Input Value", int(df[qty].min()), int(df[qty].max()), int(df[qty].mean()))
 
             if st.button("Predict"):
                 pred = model.predict([[val]])
                 st.success(f"₹ {int(pred[0]):,}")
-
         else:
             st.warning("No suitable columns found")
 
