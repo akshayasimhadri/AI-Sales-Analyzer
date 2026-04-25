@@ -47,10 +47,16 @@ if file:
 if kpi_file:
     kpi_df = pd.read_csv(kpi_file)
 
+# ---------- 🔧 FIX: SAFE COLUMN MAPPER ----------
+def safe_col(df, col):
+    cols = {c.lower().replace(" ", ""): c for c in df.columns}
+    key = col.lower().replace(" ", "")
+    return cols.get(key, col)
+
 # ---------- SQL ----------
 def generate_sql(row):
     m = str(row["metric"]).lower()
-    c = row["dimension"]
+    c = safe_col(df, row["dimension"])   # ✅ FIXED HERE
 
     if m == "sum":
         return f"SELECT SUM({c}) as value FROM sales_data"
@@ -74,19 +80,14 @@ def auto_visualize(df):
     numeric = df.select_dtypes(include=["int64","float64"]).columns
     categorical = df.select_dtypes(include=["object"]).columns
 
-    # NUMERIC
     for i, col in enumerate(numeric[:3]):
         st.markdown(f"### 📈 {col} Distribution")
-
         if st.button(f"🔄 Reset {col}", key=f"num_{i}"):
             st.rerun()
-
         st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
 
-    # CATEGORICAL
     for i, col in enumerate(categorical[:3]):
         st.markdown(f"### 📊 {col} Count")
-
         if st.button(f"🔄 Reset {col}", key=f"cat_{i}"):
             st.rerun()
 
@@ -96,13 +97,10 @@ def auto_visualize(df):
         st.plotly_chart(px.bar(temp, x=col, y="count", text="count"), use_container_width=True)
         st.plotly_chart(px.pie(temp, names=col, values="count"), use_container_width=True)
 
-    # CORRELATION
     if len(numeric) > 1:
         st.markdown("### 🔥 Correlation Heatmap")
-
         if st.button("🔄 Reset Correlation"):
             st.rerun()
-
         st.plotly_chart(px.imshow(df[numeric].corr(), text_auto=True), use_container_width=True)
 
 # ---------- SMART BUILDER ----------
@@ -133,7 +131,6 @@ if page == "Dashboard":
     st.title("📊 AI Sales Dashboard")
 
     if df is not None:
-        # Metrics
         c1,c2,c3 = st.columns(3)
         c1.metric("Rows", len(df))
         c2.metric("Columns", len(df.columns))
@@ -142,7 +139,6 @@ if page == "Dashboard":
         st.divider()
         st.dataframe(df.head())
 
-        # KPI SECTION
         if kpi_df is not None:
             st.divider()
             st.subheader("🤖 KPI Insights")
@@ -172,18 +168,15 @@ if page == "Dashboard":
 
         st.divider()
 
-        # AUTO VISUALS
         auto_visualize(df)
 
         st.divider()
 
-        # BUILDER
         smart_builder(df)
 
     else:
         st.warning("Upload a dataset")
 
-# ================= EDA =================
 elif page == "EDA":
     st.title("🔍 EDA")
 
@@ -191,7 +184,6 @@ elif page == "EDA":
         st.dataframe(df.describe())
         st.dataframe(df.isnull().sum())
 
-# ================= VISUAL =================
 elif page == "Visualizations":
     st.title("📈 Visualizations")
 
@@ -210,7 +202,6 @@ elif page == "Visualizations":
 
         st.plotly_chart(fig, use_container_width=True)
 
-# ================= PREDICTION =================
 elif page == "Prediction":
     st.title("🤖 Prediction")
 
@@ -228,9 +219,6 @@ elif page == "Prediction":
             st.metric("R² Score", f"{r2_score(y, model.predict(X)):.2f}")
 
             val = st.slider("Input Value", int(df[X_col].min()), int(df[X_col].max()), int(df[X_col].mean()))
-
-            if st.button("🔄 Reset Prediction"):
-                st.rerun()
 
             if st.button("Predict"):
                 pred = model.predict([[val]])
