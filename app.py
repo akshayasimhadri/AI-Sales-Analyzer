@@ -3,50 +3,126 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-st.set_page_config(layout="wide", page_title="Autonomous BI SaaS")
+# ---------------- CONFIG ----------------
+st.set_page_config(page_title="AI Sales Analyst", layout="wide")
 
-st.title("🤖 Autonomous BI SaaS AI Agent")
+st.title("🤖 AI Sales Data Analyst Agent")
+st.write("Upload CSV/Excel → Auto KPIs, Charts, Insights")
 
-file = st.file_uploader("Upload Dataset", type=["csv", "xlsx"])
+# ---------------- UPLOAD ----------------
+file = st.file_uploader("📂 Upload Dataset", type=["csv", "xlsx"])
 
-if file:
+# ---------------- CLEAN FUNCTION ----------------
+def clean(df):
+    df = df.copy()
+    df = df.drop_duplicates()
 
-    # LOAD
-    df = pd.read_csv(file) if file.name.endswith("csv") else pd.read_excel(file)
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = df[col].fillna(df[col].median())
+        else:
+            df[col] = df[col].fillna("Unknown")
 
-    # PROCESS
+    return df
+
+# ---------------- KPI ENGINE ----------------
+def generate_kpis(df):
+    numeric_cols = df.select_dtypes(include="number").columns
+    kpis = {}
+
+    for col in numeric_cols:
+        kpis[f"Total {col}"] = df[col].sum()
+        kpis[f"Average {col}"] = df[col].mean()
+        kpis[f"Max {col}"] = df[col].max()
+
+    return kpis
+
+# ---------------- CHART ENGINE ----------------
+def generate_charts(df):
+    charts = []
+
+    numeric_cols = df.select_dtypes(include="number").columns
+    categorical_cols = df.select_dtypes(include=["object"]).columns
+
+    # 1. Histograms
+    for col in numeric_cols:
+        fig = px.histogram(df, x=col, title=f"Distribution of {col}")
+        charts.append(fig)
+
+    # 2. Category vs Numeric (if possible)
+    if len(categorical_cols) > 0 and len(numeric_cols) > 0:
+        cat = categorical_cols[0]
+        num = numeric_cols[0]
+
+        grouped = df.groupby(cat)[num].sum().reset_index()
+        fig = px.bar(grouped, x=cat, y=num, title=f"{cat} vs {num}")
+        charts.append(fig)
+
+    # 3. Correlation heatmap
+    if len(numeric_cols) > 1:
+        fig = px.imshow(df[numeric_cols].corr(), text_auto=True, title="Correlation Heatmap")
+        charts.append(fig)
+
+    return charts
+
+# ---------------- INSIGHTS ----------------
+def generate_insights(df):
+    insights = []
+
+    numeric_cols = df.select_dtypes(include="number").columns
+
+    for col in numeric_cols:
+        if df[col].mean() > df[col].median():
+            insights.append(f"📈 {col} is positively skewed (high values dominate)")
+        else:
+            insights.append(f"📊 {col} is stable or evenly distributed")
+
+    return insights
+
+# ---------------- MAIN APP ----------------
+if file is not None:
+
+    # 1️⃣ LOAD DATA FIRST
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+
+    st.subheader("📄 Raw Data")
+    st.dataframe(df.head(), use_container_width=True)
+
+    # 2️⃣ CLEAN DATA
     df = clean(df)
-    schema = detect_schema(df)
 
-    # ---------------- DASHBOARD ----------------
-    st.subheader("📊 KPI Dashboard")
+    st.subheader("🧹 Cleaned Data")
+    st.dataframe(df.head(), use_container_width=True)
 
-    kpis = auto_kpis(df, schema)
+    # 3️⃣ KPIs
+    st.subheader("📊 Auto KPIs")
 
-    cols = st.columns(4)
+    kpis = generate_kpis(df)
+
+    cols = st.columns(min(5, len(kpis)))
+
     for i, (k, v) in enumerate(kpis.items()):
-        with cols[i % 4]:
-            st.metric(k, f"{v:.2f}")
+        with cols[i % len(cols)]:
+            st.metric(k, f"{v:.2f}" if isinstance(v, float) else v)
 
-    st.divider()
+    # 4️⃣ CHARTS
+    st.subheader("📈 Auto Visualizations")
 
-    # ---------------- VISUALS ----------------
-    st.subheader("📈 Auto Visual Analytics")
+    charts = generate_charts(df)
 
-    charts = auto_visuals(df, schema)
+    for chart in charts:
+        st.plotly_chart(chart, use_container_width=True)
 
-    for c in charts:
-        st.plotly_chart(c, use_container_width=True)
+    # 5️⃣ INSIGHTS
+    st.subheader("🧠 Insights")
 
-    st.divider()
-
-    # ---------------- INSIGHTS ----------------
-    st.subheader("🧠 AI Insights")
-
-    insights = generate_insights(df, schema)
+    insights = generate_insights(df)
 
     for i in insights:
         st.write("✔", i)
 
 else:
-    st.info("Upload dataset to start autonomous BI analysis")
+    st.info("📂 Upload a CSV or Excel file to start analysis")
