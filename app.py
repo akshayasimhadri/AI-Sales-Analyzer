@@ -57,23 +57,23 @@ if file:
 if kpi_file:
     kpi_df = pd.read_csv(kpi_file)
 
-# ---------- KPI SQL ----------
+# ---------- KPI SQL GENERATOR ----------
 def generate_sql_from_kpi(row):
     metric = str(row["metric"]).lower()
     column = row["dimension"]
     name = row["kpi_name"]
 
     if metric == "sum":
-        return name, f"SELECT SUM({column}) AS value FROM sales_data"
+        sql = f"SELECT SUM({column}) AS value FROM sales_data"
 
     elif metric == "avg":
-        return name, f"SELECT AVG({column}) AS value FROM sales_data"
+        sql = f"SELECT AVG({column}) AS value FROM sales_data"
 
     elif metric == "count":
-        return name, f"SELECT COUNT({column}) AS value FROM sales_data"
+        sql = f"SELECT COUNT({column}) AS value FROM sales_data"
 
     elif metric == "top":
-        return name, f"""
+        sql = f"""
         SELECT {column}, COUNT(*) as value
         FROM sales_data
         GROUP BY {column}
@@ -81,7 +81,10 @@ def generate_sql_from_kpi(row):
         LIMIT 1
         """
 
-    return name, None
+    else:
+        sql = None
+
+    return name, sql
 
 # ================== DASHBOARD ==================
 if page == "Dashboard":
@@ -104,28 +107,47 @@ if page == "Dashboard":
 
         st.dataframe(df.head())
 
-        # ---------- KPI INGESTION ----------
+        # ---------- KPI AUTO SQL WITH QUERY COLUMN ----------
         if kpi_df is not None:
-            st.subheader("🤖 KPI Results (Auto SQL)")
+            st.subheader("🤖 KPI Results with SQL Proof")
+
+            results = []
 
             for _, row in kpi_df.iterrows():
                 kpi_name, sql = generate_sql_from_kpi(row)
 
                 if sql:
                     try:
-                        result = pd.read_sql(sql, conn)
+                        result_df = pd.read_sql(sql, conn)
 
-                        st.markdown(f"### {kpi_name}")
-
-                        if result.shape[1] == 1:
-                            st.metric(kpi_name, result.iloc[0, 0])
+                        # Extract value
+                        if result_df.shape[1] == 1:
+                            value = result_df.iloc[0, 0]
                         else:
-                            st.dataframe(result)
+                            value = result_df.to_dict(orient="records")[0]
+
+                        results.append({
+                            "KPI Name": kpi_name,
+                            "SQL Query": sql.strip(),
+                            "Result": value
+                        })
 
                     except Exception as e:
-                        st.error(f"{kpi_name}: {e}")
+                        results.append({
+                            "KPI Name": kpi_name,
+                            "SQL Query": sql,
+                            "Result": f"Error: {e}"
+                        })
 
-        # Chart
+            final_df = pd.DataFrame(results)
+
+            st.dataframe(final_df)
+
+            # Download
+            csv = final_df.to_csv(index=False).encode()
+            st.download_button("📥 Download KPI Results", csv, "kpi_results.csv")
+
+        # ---------- CHART ----------
         if "Amount" in df.columns:
             st.subheader("📈 Sales Distribution")
             fig = px.histogram(df, x="Amount")
@@ -155,7 +177,7 @@ elif page == "Visualizations":
 
 # ================== PREDICTION ==================
 elif page == "Prediction":
-    st.title("🤖 Sales Prediction (Improved)")
+    st.title("🤖 Sales Prediction")
 
     if df is not None and "Amount" in df.columns:
 
@@ -177,7 +199,6 @@ elif page == "Prediction":
 
             st.metric("Model Accuracy (R²)", f"{score:.2f}")
 
-            # Slider
             val = st.slider(
                 "Input Value",
                 int(df[X_col].min()),
@@ -185,30 +206,29 @@ elif page == "Prediction":
                 int(df[X_col].mean())
             )
 
-            # Prediction
             if st.button("Predict"):
                 pred = model.predict([[val]])
                 st.success(f"💰 Predicted Sales: ₹ {int(pred[0]):,}")
 
                 st.info(f"""
 📊 Insight:
-For input value **{val}**, expected sales is approximately **₹ {int(pred[0]):,}** 
-based on historical data trends.
+For **{val}**, expected sales ≈ **₹ {int(pred[0]):,}**
+based on historical trend.
 """)
 
-            # Regression Graph
-            st.subheader("📈 Prediction Trend")
+            # Graph
+            st.subheader("📈 Regression Trend")
 
             x_range = np.linspace(df[X_col].min(), df[X_col].max(), 100)
             y_range = model.predict(x_range.reshape(-1,1))
 
-            fig = px.scatter(df, x=X_col, y=y_col, title="Regression Analysis")
-            fig.add_scatter(x=x_range, y=y_range, mode='lines', name="Trend Line")
+            fig = px.scatter(df, x=X_col, y=y_col)
+            fig.add_scatter(x=x_range, y=y_range, mode='lines', name="Trend")
 
             st.plotly_chart(fig, use_container_width=True)
 
         else:
-            st.warning("Not enough numeric data")
+            st.warning("Not enough numeric columns")
 
     else:
-        st.warning("Upload dataset with 'Amount' column")
+        st.warning("Upload dataset with 'Amount'")
