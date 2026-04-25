@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestRegressor
 # ================= CONFIG =================
 st.set_page_config(page_title="AI BI Copilot", layout="wide")
 
-st.title("🤖 AI BI Copilot - Executive Analytics Engine")
+st.title("🤖 AI Analyzer - Executive Analytics Engine")
 
 # ================= SIDEBAR NAV =================
 page = st.sidebar.radio(
