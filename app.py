@@ -1,4 +1,5 @@
-import streamlit as st
+
+   import streamlit as st 
 import pandas as pd
 import plotly.express as px
 import numpy as np
@@ -47,21 +48,17 @@ if file:
 if kpi_file:
     kpi_df = pd.read_csv(kpi_file)
 
-# ---------- SQL ENGINE ----------
+# ---------- SQL ----------
 def generate_sql(row):
     m = str(row["metric"]).lower()
     c = row["dimension"]
 
-    product = str(row.get("product", "")).strip()
-    person = str(row.get("person", "")).strip()
-
-    # ---------- AGG ----------
     if m == "sum":
-        agg = f"SUM({c})"
+        return f"SELECT SUM({c}) as value FROM sales_data"
     elif m == "avg":
-        agg = f"AVG({c})"
+        return f"SELECT AVG({c}) as value FROM sales_data"
     elif m == "count":
-        agg = f"COUNT({c})"
+        return f"SELECT COUNT({c}) as value FROM sales_data"
     elif m == "top":
         return f"""
         SELECT {c}, COUNT(*) as value
@@ -71,38 +68,6 @@ def generate_sql(row):
         LIMIT 1
         """
 
-    # ---------- SPECIAL CASE (Product by Person) ----------
-    if "product by person" in str(row["kpi_name"]).lower():
-        return f"""
-        SELECT SalesPerson, Product, {agg} as value
-        FROM sales_data
-        GROUP BY SalesPerson, Product
-        """
-
-    # ---------- DYNAMIC GROUP ----------
-    if c in ["Product", "Country", "SalesPerson"]:
-        group_col = c
-    else:
-        group_col = "SalesPerson"
-
-    query = f"SELECT {group_col}, {agg} as value FROM sales_data"
-
-    # ---------- FILTERS ----------
-    conditions = []
-
-    if product and product.lower() != "nan":
-        conditions.append(f"Product = '{product}'")
-
-    if person and person.lower() != "nan":
-        conditions.append(f"SalesPerson = '{person}'")
-
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += f" GROUP BY {group_col}"
-
-    return query
-
 # ---------- AUTO VISUAL ----------
 def auto_visualize(df):
     st.subheader("📊 Auto Visualizations")
@@ -110,14 +75,19 @@ def auto_visualize(df):
     numeric = df.select_dtypes(include=["int64","float64"]).columns
     categorical = df.select_dtypes(include=["object"]).columns
 
+    # NUMERIC
     for i, col in enumerate(numeric[:3]):
         st.markdown(f"### 📈 {col} Distribution")
+
         if st.button(f"🔄 Reset {col}", key=f"num_{i}"):
             st.rerun()
+
         st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
 
+    # CATEGORICAL
     for i, col in enumerate(categorical[:3]):
         st.markdown(f"### 📊 {col} Count")
+
         if st.button(f"🔄 Reset {col}", key=f"cat_{i}"):
             st.rerun()
 
@@ -127,10 +97,13 @@ def auto_visualize(df):
         st.plotly_chart(px.bar(temp, x=col, y="count", text="count"), use_container_width=True)
         st.plotly_chart(px.pie(temp, names=col, values="count"), use_container_width=True)
 
+    # CORRELATION
     if len(numeric) > 1:
         st.markdown("### 🔥 Correlation Heatmap")
+
         if st.button("🔄 Reset Correlation"):
             st.rerun()
+
         st.plotly_chart(px.imshow(df[numeric].corr(), text_auto=True), use_container_width=True)
 
 # ---------- SMART BUILDER ----------
@@ -161,6 +134,7 @@ if page == "Dashboard":
     st.title("📊 AI Sales Dashboard")
 
     if df is not None:
+        # Metrics
         c1,c2,c3 = st.columns(3)
         c1.metric("Rows", len(df))
         c2.metric("Columns", len(df.columns))
@@ -169,7 +143,7 @@ if page == "Dashboard":
         st.divider()
         st.dataframe(df.head())
 
-        # ---------- KPI ----------
+        # KPI SECTION
         if kpi_df is not None:
             st.divider()
             st.subheader("🤖 KPI Insights")
@@ -183,15 +157,7 @@ if page == "Dashboard":
                     st.markdown(f"### {row['kpi_name']}")
                     st.code(sql)
 
-                    # 👉 3 columns (Product by Person)
-                    if res.shape[1] == 3:
-                        st.plotly_chart(
-                            px.bar(res, x="SalesPerson", y="value", color="Product", barmode="group"),
-                            use_container_width=True
-                        )
-
-                    # 👉 Normal chart
-                    elif res.shape[1] == 2:
+                    if res.shape[1] == 2:
                         x = res.columns[0]
                         y = res.columns[1]
 
@@ -199,17 +165,20 @@ if page == "Dashboard":
                             st.rerun()
 
                         st.plotly_chart(px.bar(res, x=x, y=y, text=y), use_container_width=True)
-
-                    # 👉 Single value
                     else:
-                        st.metric(row['kpi_name'], int(res.iloc[0,0]))
+                        st.metric(row['kpi_name'], res.iloc[0,0])
 
                 except Exception as e:
                     st.error(str(e))
 
         st.divider()
+
+        # AUTO VISUALS
         auto_visualize(df)
+
         st.divider()
+
+        # BUILDER
         smart_builder(df)
 
     else:
@@ -218,6 +187,7 @@ if page == "Dashboard":
 # ================= EDA =================
 elif page == "EDA":
     st.title("🔍 EDA")
+
     if df is not None:
         st.dataframe(df.describe())
         st.dataframe(df.isnull().sum())
