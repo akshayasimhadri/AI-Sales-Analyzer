@@ -8,11 +8,21 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 
-# ================= CONFIG =================
-st.set_page_config(page_title="AI Enterprise BI Platform", layout="wide")
-st.title("🤖 AI Enterprise BI Platform (Pro Edition)")
+# ================= PAGE CONFIG =================
+st.set_page_config(
+    page_title="AI Enterprise BI Platform",
+    layout="wide"
+)
 
-# ================= NAV =================
+# ================= HEADER =================
+st.markdown(
+    "<h1 style='text-align:center;'>🤖 AI Enterprise BI Platform</h1>",
+    unsafe_allow_html=True
+)
+
+st.markdown("---")
+
+# ================= SIDEBAR =================
 page = st.sidebar.radio(
     "📌 Navigation",
     ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🔮 Prediction", "🤖 AI Analyst"]
@@ -20,7 +30,7 @@ page = st.sidebar.radio(
 
 file = st.sidebar.file_uploader("📂 Upload CSV / Excel", type=["csv", "xlsx"])
 
-# ================= PIPELINE =================
+# ================= PIPELINE ANIMATION =================
 def smooth_pipeline():
     steps = [
         "📥 Loading Data",
@@ -38,7 +48,7 @@ def smooth_pipeline():
         progress.progress((i + 1) * 20)
         time.sleep(0.2)
 
-# ================= CLEAN =================
+# ================= CLEAN DATA =================
 def clean(df):
     df = df.drop_duplicates()
 
@@ -61,7 +71,7 @@ def kpi_engine(df):
 
     return kpis
 
-# ================= AI ANALYST =================
+# ================= AI ENGINE =================
 def ai_engine(df, query):
 
     query = query.lower()
@@ -95,7 +105,7 @@ def ai_engine(df, query):
             "df": grouped,
             "x": date_col,
             "y": metric,
-            "answer": f"📅 Best {date_col}: {best[date_col]}"
+            "answer": f"📅 Peak: {best[date_col]}"
         }
 
     if "top" in query:
@@ -114,7 +124,7 @@ def ai_engine(df, query):
             "df": grouped.reset_index(),
             "x": group_col,
             "y": metric,
-            "answer": "🏆 Top analysis generated"
+            "answer": "🏆 Top analysis ready"
         }
 
     return {
@@ -122,12 +132,10 @@ def ai_engine(df, query):
         "answer": f"📊 Total {metric}: {df[metric].sum():.2f}"
     }
 
-# ================= ML PREDICTION ENGINE (NEW UPGRADE) =================
+# ================= ML PREDICTION =================
 def ml_prediction(df, target):
 
     df = df.copy()
-
-    # only numeric columns
     num_df = df.select_dtypes(include="number")
 
     if target not in num_df.columns:
@@ -153,9 +161,7 @@ def ml_prediction(df, target):
 
     for name, model in models.items():
         try:
-            scores = cross_val_score(model, X_train, y_train, cv=3)
-            score = scores.mean()
-
+            score = cross_val_score(model, X_train, y_train, cv=3).mean()
             if score > best_score:
                 best_score = score
                 best_model = model
@@ -163,11 +169,9 @@ def ml_prediction(df, target):
             continue
 
     best_model.fit(X_train, y_train)
-
     preds = best_model.predict(X_test)
 
     rmse = np.sqrt(np.mean((y_test - preds) ** 2))
-
     accuracy = max(0, 100 - (rmse / (y.mean() + 1e-6)) * 100)
 
     return best_model, accuracy, y_test, preds
@@ -182,8 +186,6 @@ if file is not None:
     else:
         df = pd.read_excel(file)
 
-    st.success("📥 Data Loaded")
-
     df = clean(df)
 
     num_cols = df.select_dtypes(include="number").columns
@@ -191,9 +193,12 @@ if file is not None:
     # ================= DASHBOARD =================
     if page == "🏠 Dashboard":
 
-        st.subheader("📊 Executive Dashboard")
+        st.markdown("## 📊 Executive Dashboard")
 
         kpis = kpi_engine(df)
+
+        # KPIs
+        st.markdown("### 🎯 KPIs")
 
         cols = st.columns(min(4, len(kpis)))
 
@@ -201,9 +206,12 @@ if file is not None:
             with cols[i % len(cols)]:
                 st.metric(k, f"{v:.2f}")
 
+        # DATA TABLE
         st.markdown("### 📋 Full Dataset")
+
         st.dataframe(df, use_container_width=True)
 
+        # KPI TABLE
         st.markdown("### 📊 KPI Table")
 
         st.dataframe(pd.DataFrame({
@@ -211,16 +219,42 @@ if file is not None:
             "Value": list(kpis.values())
         }))
 
+        # TREND SECTION (WITH OPTIONS)
+        st.markdown("### 📈 Trends")
+
+        chart_type = st.selectbox(
+            "Select Trend Type",
+            ["Line Chart", "Bar Chart", "Pie Chart"]
+        )
+
+        for col in num_cols[:3]:
+
+            st.markdown(f"#### {col}")
+
+            if chart_type == "Line Chart":
+                fig = px.line(df, y=col)
+            elif chart_type == "Bar Chart":
+                fig = px.bar(df, y=col)
+            else:
+                fig = px.pie(df, names=col)
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        # INSIGHTS
+        st.markdown("### 🧠 Insights")
+
+        for col in num_cols[:3]:
+            st.info(f"{col}: Avg = {df[col].mean():.2f}")
+
     # ================= EDA =================
     elif page == "📊 EDA":
 
-        st.subheader("📊 Data Analysis")
+        st.subheader("📊 Data Overview")
 
-        st.dataframe(df.head())
-
+        st.dataframe(df.head(), use_container_width=True)
         st.dataframe(df.describe())
 
-    # ================= VISUAL =================
+    # ================= VISUALIZATION =================
     elif page == "📈 Visualizations":
 
         st.subheader("📊 Charts")
@@ -228,12 +262,12 @@ if file is not None:
         col = st.selectbox("Select Column", df.columns)
 
         if col in num_cols:
-            st.plotly_chart(px.histogram(df, x=col))
+            st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
 
-    # ================= PREDICTION (NEW ENTERPRISE VERSION) =================
+    # ================= PREDICTION =================
     elif page == "🔮 Prediction":
 
-        st.subheader("🔮 AI ML Prediction Engine")
+        st.subheader("🔮 ML Prediction Engine")
 
         if len(num_cols) > 0:
 
@@ -241,32 +275,28 @@ if file is not None:
 
             model, accuracy, y_test, preds = ml_prediction(df, target)
 
-            if model is not None:
+            if model:
 
-                st.markdown("### 📊 Model Performance")
-
-                st.metric("Accuracy (%)", f"{accuracy:.2f}")
+                st.metric("Model Accuracy", f"{accuracy:.2f}%")
 
                 if accuracy > 80:
-                    st.success("🟢 High Confidence Model")
+                    st.success("🟢 High Confidence")
                 elif accuracy > 50:
-                    st.warning("🟡 Medium Confidence Model")
+                    st.warning("🟡 Medium Confidence")
                 else:
-                    st.error("🔴 Low Confidence Model")
+                    st.error("🔴 Low Confidence")
 
-                result_df = pd.DataFrame({
+                result = pd.DataFrame({
                     "Actual": y_test.values,
                     "Predicted": preds
                 })
 
-                st.markdown("### 📈 Actual vs Predicted")
-
-                st.plotly_chart(px.line(result_df))
+                st.plotly_chart(px.line(result), use_container_width=True)
 
     # ================= AI ANALYST =================
     elif page == "🤖 AI Analyst":
 
-        st.subheader("🤖 Smart Data Analyst")
+        st.subheader("🤖 AI Data Analyst")
 
         query = st.text_input("Ask anything")
 
@@ -279,4 +309,4 @@ if file is not None:
                 st.plotly_chart(px.bar(output["df"], x=output["x"], y=output["y"]))
 
 else:
-    st.info("📂 Upload dataset to start")
+    st.info("📂 Upload dataset to start analysis")
