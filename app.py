@@ -4,17 +4,34 @@ import numpy as np
 import plotly.express as px
 
 # ================= CONFIG =================
-st.set_page_config(page_title="AI BI Copilot Pro", layout="wide")
+st.set_page_config(page_title="AI BI Copilot", layout="wide")
 
-st.title("🤖 AI BI Copilot Pro (Self-Validating System)")
-st.write("Upload data → Auto KPIs + Validation + Custom Visuals")
+st.title("🤖 AI BI Copilot (Enterprise Dashboard)")
 
-# ================= FILE =================
-file = st.file_uploader("📂 Upload CSV / Excel", type=["csv", "xlsx"])
+# ================= SIDEBAR NAV =================
+page = st.sidebar.radio(
+    "📌 Navigation",
+    ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🔮 Prediction"]
+)
 
-# ================= CLEANING =================
+file = st.sidebar.file_uploader("📂 Upload Dataset", type=["csv", "xlsx"])
+
+# ================= PIPELINE =================
+def pipeline(step):
+    steps = ["Upload", "Clean", "EDA", "Visualization", "Prediction"]
+
+    st.sidebar.markdown("### ⚙ Pipeline Progress")
+
+    for i, s in enumerate(steps):
+        if i < step:
+            st.sidebar.success("✔ " + s)
+        elif i == step:
+            st.sidebar.info("🔵 " + s)
+        else:
+            st.sidebar.write("⬜ " + s)
+
+# ================= CLEAN =================
 def clean(df):
-    df = df.copy()
     df = df.drop_duplicates()
 
     for col in df.columns:
@@ -25,17 +42,6 @@ def clean(df):
 
     return df
 
-# ================= DATA QUALITY SCORE =================
-def data_quality_score(df):
-    score = 100
-
-    missing_ratio = df.isnull().sum().sum() / (df.shape[0] * df.shape[1] + 1)
-
-    score -= missing_ratio * 50
-    score -= df.duplicated().sum() * 0.1
-
-    return max(0, min(100, score))
-
 # ================= KPI ENGINE =================
 def kpi_engine(df):
     kpis = {}
@@ -44,114 +50,142 @@ def kpi_engine(df):
     for col in num:
         kpis[f"Total {col}"] = df[col].sum()
         kpis[f"Avg {col}"] = df[col].mean()
-        kpis[f"Max {col}"] = df[col].max()
 
     return kpis
 
-# ================= KPI VALIDATION =================
-def validate_kpis(df, kpis):
-    issues = []
-
-    num = df.select_dtypes(include="number").columns
-
-    for col in num:
-        actual = df[col].sum()
-        calc = kpis.get(f"Total {col}", None)
-
-        if calc is not None and abs(actual - calc) > 1e-6:
-            issues.append(f"⚠ KPI mismatch in {col}")
-
-    return issues
+# ================= DATA QUALITY =================
+def data_quality(df):
+    score = 100
+    score -= df.isnull().sum().sum() * 0.1
+    score -= df.duplicated().sum() * 0.1
+    return max(0, min(100, score))
 
 # ================= VISUAL ENGINE =================
 def plot_chart(df, chart_type, x, y=None):
 
     if chart_type == "Bar Chart":
-        return px.bar(df, x=x, y=y if y else x)
+        return px.bar(df, x=x, y=y)
 
     elif chart_type == "Pie Chart":
         return px.pie(df, names=x)
 
     elif chart_type == "Line Chart":
-        return px.line(df, x=x, y=y if y else x)
+        return px.line(df, x=x, y=y)
 
     elif chart_type == "Histogram":
         return px.histogram(df, x=x)
 
     return None
 
-# ================= MAIN =================
+# ================= LOAD =================
 if file is not None:
 
-    # LOAD
-    if file.name.endswith(".csv"):
+    pipeline(0)
+
+    if file.name.endswith("csv"):
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file)
 
     st.success("📥 Data Loaded")
 
-    # CLEAN
+    pipeline(1)
+
     df = clean(df)
+
     st.success("🧹 Data Cleaned")
-
-    # QUALITY SCORE
-    score = data_quality_score(df)
-
-    st.subheader("🧪 Data Quality Score")
-    st.metric("Score", f"{score:.2f}/100")
-
-    if score < 50:
-        st.warning("⚠ Low quality dataset detected")
-
-    # ================= KPIs =================
-    st.subheader("📊 KPIs")
-
-    kpis = kpi_engine(df)
-
-    cols = st.columns(min(4, len(kpis)))
-
-    for i, (k, v) in enumerate(kpis.items()):
-        with cols[i % len(cols)]:
-            st.metric(k, f"{v:.2f}")
-
-    # VALIDATION
-    issues = validate_kpis(df, kpis)
-
-    if issues:
-        st.subheader("⚠ KPI Validation Issues")
-        for i in issues:
-            st.write(i)
-    else:
-        st.success("✔ All KPIs validated successfully")
-
-    # ================= VISUALIZATION =================
-    st.subheader("📈 Custom Visualization Engine")
 
     numeric = df.select_dtypes(include="number").columns
     categorical = df.select_dtypes(include=["object"]).columns
 
-    chart_type = st.selectbox(
-        "Choose Chart Type",
-        ["Bar Chart", "Pie Chart", "Line Chart", "Histogram"]
-    )
+    # ================= DASHBOARD =================
+    if page == "🏠 Dashboard":
 
-    if len(numeric) > 0:
+        st.subheader("📊 KPI Dashboard")
+
+        kpis = kpi_engine(df)
+
+        cols = st.columns(min(4, len(kpis)))
+
+        for i, (k, v) in enumerate(kpis.items()):
+            with cols[i % len(cols)]:
+                st.metric(k, f"{v:.2f}")
+
+        st.markdown("---")
+
+        st.subheader("🧪 Data Quality Score")
+
+        score = data_quality(df)
+        st.metric("Score", f"{score:.2f}/100")
+
+    # ================= EDA =================
+    elif page == "📊 EDA":
+
+        pipeline(2)
+
+        st.subheader("📊 Exploratory Data Analysis")
+
+        tab1, tab2, tab3 = st.tabs(["Preview", "Missing Values", "Statistics"])
+
+        with tab1:
+            st.dataframe(df.head(), use_container_width=True)
+
+        with tab2:
+            st.dataframe(df.isnull().sum())
+
+        with tab3:
+            st.dataframe(df.describe())
+
+    # ================= VISUALIZATION =================
+    elif page == "📈 Visualizations":
+
+        pipeline(3)
+
+        st.subheader("📈 Visualization Engine")
+
+        chart_type = st.selectbox(
+            "Choose Chart Type",
+            ["Bar Chart", "Pie Chart", "Line Chart", "Histogram"]
+        )
 
         x_axis = st.selectbox("X Axis", df.columns)
 
         y_axis = None
         if chart_type in ["Bar Chart", "Line Chart"]:
-            y_axis = st.selectbox("Y Axis (optional)", numeric)
+            y_axis = st.selectbox("Y Axis", numeric)
 
         fig = plot_chart(df, chart_type, x_axis, y_axis)
 
         if fig:
             st.plotly_chart(fig, use_container_width=True)
 
-    # ================= DATA PREVIEW =================
-    st.subheader("📄 Data Preview")
-    st.dataframe(df.head(), use_container_width=True)
+        # extra charts
+        st.markdown("### 📊 Auto Insights Charts")
+
+        for col in numeric[:3]:
+            st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
+
+        if len(numeric) > 1:
+            st.plotly_chart(px.imshow(df[numeric].corr(), text_auto=True))
+
+    # ================= PREDICTION =================
+    elif page == "🔮 Prediction":
+
+        pipeline(4)
+
+        st.subheader("🔮 Prediction Engine")
+
+        if len(numeric) > 0:
+
+            target = st.selectbox("Select Target Column", numeric)
+
+            df["Prediction"] = df[target].rolling(3).mean()
+
+            fig = px.line(df, y=[target, "Prediction"], title="Trend Prediction")
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.info("Simple AI baseline model (rolling forecast)")
 
 else:
-    st.info("📂 Upload dataset to start AI BI analysis")
+    st.info("📂 Upload dataset to start AI BI system")
