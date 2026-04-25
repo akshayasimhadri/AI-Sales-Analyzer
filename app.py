@@ -8,8 +8,8 @@ import time
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Data Analyst Agent", layout="wide")
 
-st.title("🤖 AI Data Analyst Agent (Production Ready)")
-st.write("Upload CSV/Excel → Get automatic KPIs, insights, and dashboards")
+st.title("🤖 AI Data Analyst Agent (Stable Version)")
+st.write("Upload CSV/Excel → Auto KPIs, Insights, Dashboards")
 
 # ---------------- API KEY ----------------
 api_key = st.text_input("Enter OpenAI API Key", type="password")
@@ -26,8 +26,8 @@ steps = [
     "🧹 Data Cleaning",
     "📊 KPI Engine",
     "📈 Trend Engine",
-    "🧠 Insight Engine",
-    "📊 Dashboard Ready"
+    "🧠 AI Insights",
+    "📊 Visualization Ready"
 ]
 
 status = st.sidebar.empty()
@@ -38,7 +38,7 @@ def step(i):
     status.markdown(f"### {steps[i]}")
     time.sleep(0.3)
 
-# ---------------- LOAD DATA ----------------
+# ---------------- LOAD FILE ----------------
 def load_file(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
@@ -49,29 +49,30 @@ def load_file(file):
 def detect_columns(df):
     numeric = df.select_dtypes(include=["number"]).columns.tolist()
     categorical = df.select_dtypes(include=["object", "string"]).columns.tolist()
-    datetime = df.select_dtypes(include=["datetime"]).columns.tolist()
+    datetime_cols = df.select_dtypes(include=["datetime"]).columns.tolist()
 
-    return numeric, categorical, datetime
+    return numeric, categorical, datetime_cols
 
-# ---------------- CLEAN DATA (CRASH PROOF) ----------------
+# ---------------- CLEAN DATA (FIXED) ----------------
 def clean_data(df):
     df = df.copy()
 
+    # remove duplicates
     df = df.drop_duplicates()
 
     for col in df.columns:
 
-        # STRING / CATEGORY
+        # STRING columns
         if pd.api.types.is_string_dtype(df[col]) or df[col].dtype == "object":
             df[col] = df[col].fillna("Unknown")
 
-        # NUMERIC
+        # NUMERIC columns
         elif pd.api.types.is_numeric_dtype(df[col]):
             df[col] = df[col].fillna(df[col].median())
 
-        # DATETIME
+        # DATETIME columns
         elif pd.api.types.is_datetime64_any_dtype(df[col]):
-            df[col] = df[col].fillna(method="ffill")
+            df[col] = df[col].ffill()   # ✅ FIXED (no deprecated method)
 
     return df
 
@@ -96,14 +97,19 @@ def trend_engine(df, numeric_cols):
 
     return trends
 
-# ---------------- GROUPING ENGINE ----------------
+# ---------------- GROUP INSIGHTS ----------------
 def grouping_engine(df, categorical_cols, numeric_cols):
     results = {}
 
     for cat in categorical_cols:
         for num in numeric_cols:
             try:
-                results[f"{cat} → {num}"] = df.groupby(cat)[num].sum().sort_values(ascending=False).head(5)
+                results[f"{cat} → {num}"] = (
+                    df.groupby(cat)[num]
+                    .sum()
+                    .sort_values(ascending=False)
+                    .head(5)
+                )
             except:
                 pass
 
@@ -116,8 +122,7 @@ def generate_insights(df, api_key):
     prompt = f"""
 You are a senior data analyst.
 
-Dataset:
-Columns: {df.columns.tolist()}
+Dataset columns: {df.columns.tolist()}
 Shape: {df.shape}
 
 Sample:
