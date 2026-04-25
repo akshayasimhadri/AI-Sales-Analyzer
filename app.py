@@ -109,6 +109,52 @@ def generate_sql(row):
         LIMIT 1
         """
 
+# ---------- AUTO VISUAL ----------
+def auto_visualize(df):
+    st.subheader("📊 Auto Visualizations")
+
+    numeric = df.select_dtypes(include=["int64","float64"]).columns
+    categorical = df.select_dtypes(include=["object"]).columns
+
+    # Numeric charts
+    for col in numeric[:3]:
+        st.markdown(f"### Distribution of {col}")
+        st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
+
+    # Categorical charts
+    for col in categorical[:3]:
+        temp = df[col].value_counts().reset_index()
+        temp.columns = [col, "count"]
+
+        st.markdown(f"### Count of {col}")
+        st.plotly_chart(px.bar(temp, x=col, y="count"), use_container_width=True)
+        st.plotly_chart(px.pie(temp, names=col, values="count"), use_container_width=True)
+
+    # Correlation
+    if len(numeric) > 1:
+        st.markdown("### Correlation Heatmap")
+        st.plotly_chart(px.imshow(df[numeric].corr(), text_auto=True), use_container_width=True)
+
+# ---------- SMART BUILDER ----------
+def smart_builder(df):
+    st.subheader("🎛️ Smart Visual Builder")
+
+    x = st.selectbox("X Axis", df.columns)
+    y = st.selectbox("Y Axis", df.columns)
+
+    chart = st.selectbox("Chart Type", ["Bar","Line","Scatter","Box"])
+
+    if chart == "Bar":
+        fig = px.bar(df, x=x, y=y)
+    elif chart == "Line":
+        fig = px.line(df, x=x, y=y)
+    elif chart == "Scatter":
+        fig = px.scatter(df, x=x, y=y)
+    else:
+        fig = px.box(df, x=x, y=y)
+
+    st.plotly_chart(fig, use_container_width=True)
+
 # ---------- PIPELINE RUN ----------
 def run_pipeline():
     log_box = st.empty()
@@ -154,34 +200,30 @@ if page == "Dashboard":
 
         st.dataframe(df.head())
 
+        # KPI
         if kpi_df is not None:
-            st.subheader("🤖 KPI Results with SQL")
-
-            results = []
+            st.subheader("🤖 KPI Results")
 
             for _, row in kpi_df.iterrows():
                 sql = generate_sql(row)
 
                 try:
                     res = pd.read_sql(sql, conn)
-                    val = res.iloc[0,0] if res.shape[1]==1 else res.to_dict("records")[0]
 
-                    results.append({
-                        "KPI Name": row["kpi_name"],
-                        "SQL Query": sql.strip(),
-                        "Result": val
-                    })
+                    st.markdown(f"### {row['kpi_name']}")
+                    st.code(sql)
+                    st.dataframe(res)
+
+                    auto_visualize(res)
+
                 except Exception as e:
-                    results.append({
-                        "KPI Name": row["kpi_name"],
-                        "SQL Query": sql,
-                        "Result": str(e)
-                    })
+                    st.error(str(e))
 
-            st.dataframe(pd.DataFrame(results))
+        # Auto Visual
+        auto_visualize(df)
 
-        if "Amount" in df.columns:
-            st.plotly_chart(px.histogram(df, x="Amount"), use_container_width=True)
+        # Smart builder
+        smart_builder(df)
 
 # ================= EDA =================
 elif page == "EDA":
@@ -241,11 +283,10 @@ elif page == "APIs":
     }
 
     selected = st.selectbox("Select API", list(api_options.keys()))
-    url = api_options[selected]
 
     if st.button("Fetch API Data"):
         try:
-            res = requests.get(url)
+            res = requests.get(api_options[selected])
             data = res.json()
 
             if isinstance(data, dict) and "products" in data:
@@ -256,12 +297,8 @@ elif page == "APIs":
             st.success("API Loaded")
             st.dataframe(df_api.head())
 
-            df_api.columns = df_api.columns.str.strip()
             df_api.to_sql("sales_data", conn, index=False, if_exists="replace")
-
             st.session_state["df"] = df_api
-
-            st.info("Go to Dashboard to analyze")
 
         except Exception as e:
             st.error(str(e))
