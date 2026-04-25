@@ -56,7 +56,9 @@ def safe_col(df, col):
 # ---------- SQL ----------
 def generate_sql(row):
     m = str(row["metric"]).lower()
-    c = safe_col(df, row["dimension"])   # ✅ FIXED HERE
+    
+    c = safe_col(df, row["dimension"])
+    c = f'"{c}"'   # ✅ FIX: handles spaces safely for SQLite  # ✅ FIXED HERE
 
     if m == "sum":
         return f"SELECT SUM({c}) as value FROM sales_data"
