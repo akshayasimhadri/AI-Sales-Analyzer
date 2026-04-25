@@ -1,174 +1,181 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 
 # ================= CONFIG =================
-st.set_page_config(page_title="AI BI Analyst", layout="wide")
+st.set_page_config(page_title="AI BI Copilot", layout="wide")
 
-st.title("🤖 AI Autonomous BI Analyst")
-st.write("Upload CSV/Excel → Auto KPIs, Charts, Insights")
+# ================= CUSTOM UI STYLE =================
+st.markdown("""
+<style>
+.big-title {
+    font-size: 38px;
+    font-weight: 700;
+    color: #1f77b4;
+}
+.card {
+    padding: 15px;
+    border-radius: 12px;
+    background-color: #111827;
+    color: white;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.2);
+}
+.metric {
+    font-size: 20px;
+    font-weight: bold;
+}
+.small {
+    font-size: 13px;
+    opacity: 0.7;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# ================= UPLOAD =================
-file = st.file_uploader("📂 Upload Dataset", type=["csv", "xlsx"])
+# ================= TITLE =================
+st.markdown('<div class="big-title">🤖 AI BI Copilot Dashboard</div>', unsafe_allow_html=True)
 
-# ================= SAFE LOADER =================
-def load_data(file):
-    try:
-        if file.name.endswith(".csv"):
-            return pd.read_csv(file)
+# ================= SIDEBAR =================
+page = st.sidebar.radio(
+    "📌 Navigation",
+    ["🏠 Dashboard", "📊 EDA", "📈 Visual Analytics", "🔮 Prediction"]
+)
+
+file = st.sidebar.file_uploader("📂 Upload Dataset", type=["csv", "xlsx"])
+
+# ================= PIPELINE VISUAL =================
+def pipeline(step):
+    steps = ["Upload", "Clean", "EDA", "Visualization", "Prediction"]
+
+    st.sidebar.markdown("### ⚙ Pipeline")
+
+    for i, s in enumerate(steps):
+        if i < step:
+            st.sidebar.success("✔ " + s)
+        elif i == step:
+            st.sidebar.info("🔵 " + s)
         else:
-            return pd.read_excel(file)
-    except Exception as e:
-        st.error(f"File loading error: {e}")
-        return None
+            st.sidebar.write("⬜ " + s)
 
-# ================= ROBUST CLEANING =================
-def clean_data(df):
-    df = df.copy()
-
-    # remove duplicates
+# ================= CLEAN DATA =================
+def clean(df):
     df = df.drop_duplicates()
 
     for col in df.columns:
-
-        # TRY convert to numeric safely
-        try:
-            converted = pd.to_numeric(df[col], errors="coerce")
-
-            # if at least some values become numeric → treat as numeric
-            if converted.notna().sum() > 0:
-                df[col] = converted
-                df[col] = df[col].fillna(df[col].median())
-                continue
-        except:
-            pass
-
-        # DATE handling
-        if "date" in col.lower() or "time" in col.lower():
-            try:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
-                df[col] = df[col].ffill()
-            except:
-                df[col] = df[col].fillna("Unknown")
-            continue
-
-        # categorical fallback
-        df[col] = df[col].astype(str).fillna("Unknown")
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = df[col].fillna(df[col].median())
+        else:
+            df[col] = df[col].fillna("Unknown")
 
     return df
 
-# ================= KPI ENGINE =================
-def generate_kpis(df):
-    kpis = {}
-    numeric_cols = df.select_dtypes(include="number").columns
-
-    for col in numeric_cols:
-        try:
-            kpis[f"Total {col}"] = float(df[col].sum())
-            kpis[f"Avg {col}"] = float(df[col].mean())
-            kpis[f"Max {col}"] = float(df[col].max())
-        except:
-            continue
-
-    return kpis
-
-# ================= VISUAL ENGINE =================
-def generate_charts(df):
-    charts = []
-
-    numeric_cols = df.select_dtypes(include="number").columns
-    categorical_cols = df.select_dtypes(include=["object"]).columns
-
-    # numeric distributions
-    for col in numeric_cols:
-        try:
-            charts.append(px.histogram(df, x=col, title=f"{col} Distribution"))
-        except:
-            pass
-
-    # category vs numeric
-    if len(categorical_cols) > 0 and len(numeric_cols) > 0:
-        try:
-            cat = categorical_cols[0]
-            num = numeric_cols[0]
-
-            grouped = df.groupby(cat)[num].sum().reset_index()
-            charts.append(px.bar(grouped, x=cat, y=num, title=f"{cat} vs {num}"))
-        except:
-            pass
-
-    # correlation heatmap
-    if len(numeric_cols) > 1:
-        try:
-            charts.append(px.imshow(df[numeric_cols].corr(), text_auto=True))
-        except:
-            pass
-
-    return charts
-
-# ================= INSIGHTS =================
-def generate_insights(df):
-    insights = []
-    numeric_cols = df.select_dtypes(include="number").columns
-
-    if len(numeric_cols) == 0:
-        return ["⚠ No numeric data found for insights"]
-
-    for col in numeric_cols:
-        try:
-            if df[col].mean() > df[col].median():
-                insights.append(f"📈 {col} shows growth tendency")
-            else:
-                insights.append(f"📊 {col} is stable")
-        except:
-            continue
-
-    return insights
-
-# ================= MAIN APP =================
+# ================= LOAD =================
 if file is not None:
 
-    df = load_data(file)
+    pipeline(0)
 
-    if df is None:
-        st.stop()
-
-    st.subheader("📄 Raw Data")
-    st.dataframe(df.head(), width="stretch")
-
-    # CLEAN
-    df = clean_data(df)
-
-    st.subheader("🧹 Cleaned Data")
-    st.dataframe(df.head(), width="stretch")
-
-    # KPIs
-    st.subheader("📊 KPIs")
-    kpis = generate_kpis(df)
-
-    if kpis:
-        cols = st.columns(min(5, len(kpis)))
-
-        for i, (k, v) in enumerate(kpis.items()):
-            with cols[i % len(cols)]:
-                st.metric(k, f"{v:.2f}")
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
     else:
-        st.warning("No KPIs generated")
+        df = pd.read_excel(file)
 
-    # CHARTS
-    st.subheader("📈 Visualizations")
-    charts = generate_charts(df)
+    st.success("Dataset Loaded")
+    pipeline(1)
 
-    for c in charts:
-        st.plotly_chart(c, use_container_width=True)
+    df = clean(df)
+    st.success("Data Cleaned")
+    pipeline(2)
 
-    # INSIGHTS
-    st.subheader("🧠 Insights")
-    insights = generate_insights(df)
+    numeric = df.select_dtypes(include="number").columns
+    categorical = df.select_dtypes(include=["object"]).columns
 
-    for i in insights:
-        st.write("✔", i)
+    # ================= DASHBOARD =================
+    if page == "🏠 Dashboard":
+
+        st.markdown("## 📊 Business KPIs")
+
+        cols = st.columns(min(4, len(numeric)))
+
+        for i, col in enumerate(numeric[:4]):
+
+            with cols[i % len(cols)]:
+
+                st.markdown(f"""
+                <div class="card">
+                    <div class="metric">📌 {col}</div>
+                    <div>Total: {df[col].sum():.2f}</div>
+                    <div class="small">Avg: {df[col].mean():.2f}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        st.markdown("## 📈 Quick Overview Charts")
+
+        c1, c2 = st.columns(2)
+
+        if len(numeric) > 0:
+            with c1:
+                fig = px.histogram(df, x=numeric[0], title="Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+
+        if len(numeric) > 1:
+            with c2:
+                fig = px.scatter(df, x=numeric[0], y=numeric[1], title="Relation")
+                st.plotly_chart(fig, use_container_width=True)
+
+    # ================= EDA =================
+    elif page == "📊 EDA":
+
+        st.markdown("## 🔍 Exploratory Data Analysis")
+
+        st.write("Shape:", df.shape)
+
+        tab1, tab2, tab3 = st.tabs(["Missing Values", "Statistics", "Data Preview"])
+
+        with tab1:
+            st.dataframe(df.isnull().sum())
+
+        with tab2:
+            st.dataframe(df.describe())
+
+        with tab3:
+            st.dataframe(df.head())
+
+        pipeline(3)
+
+    # ================= VISUALIZATION =================
+    elif page == "📈 Visual Analytics":
+
+        st.markdown("## 📊 Advanced Visual Dashboard")
+
+        pipeline(3)
+
+        for col in numeric:
+            fig = px.histogram(df, x=col, title=f"{col}")
+            st.plotly_chart(fig, use_container_width=True)
+
+        if len(numeric) > 1:
+            fig = px.imshow(df[numeric].corr(), text_auto=True, title="Correlation Matrix")
+            st.plotly_chart(fig, use_container_width=True)
+
+    # ================= PREDICTION =================
+    elif page == "🔮 Prediction":
+
+        st.markdown("## 🔮 AI Prediction Module")
+
+        pipeline(4)
+
+        target = st.selectbox("Select Target Column", numeric)
+
+        if target:
+
+            df["Prediction"] = df[target].rolling(3).mean()
+
+            fig = px.line(df, y=[target, "Prediction"], title="Trend Prediction")
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.info("Simple AI baseline prediction (rolling trend model)")
 
 else:
-    st.info("Upload a file to start analysis")
+    st.info("📂 Upload dataset to activate AI BI dashboard")
