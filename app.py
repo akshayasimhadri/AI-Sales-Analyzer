@@ -16,7 +16,7 @@ st.set_page_config(
 
 # ================= HEADER =================
 st.markdown(
-    "<h1 style='text-align:center;'>🤖 AI Enterprise BI Platform</h1>",
+    "<h1 style='text-align:center;'>🤖 AI Analyzer</h1>",
     unsafe_allow_html=True
 )
 
