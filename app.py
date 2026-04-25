@@ -295,4 +295,4 @@ if file is not None:
                 st.info("Try: lowest sales by date / max revenue / average sales")
 
 else:
-    st.info("📂 Upload dataset to start AI BI system")
+    st.info("📂 Upload dataset to start AI Analyzer")
