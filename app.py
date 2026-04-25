@@ -7,12 +7,12 @@ import time
 # ================= CONFIG =================
 st.set_page_config(page_title="AI BI Copilot", layout="wide")
 
-st.title("🤖 AI ANALYZER (Animated Pipeline Edition)")
+st.title("🤖 AI BI Copilot - Natural Language Analytics Engine")
 
-# ================= SIDEBAR NAV =================
+# ================= SIDEBAR =================
 page = st.sidebar.radio(
     "📌 Navigation",
-    ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🔮 Prediction"]
+    ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🔮 Prediction", "🤖 AI Analyst"]
 )
 
 file = st.sidebar.file_uploader("📂 Upload CSV / Excel", type=["csv", "xlsx"])
@@ -28,17 +28,14 @@ def smooth_pipeline():
     ]
 
     container = st.sidebar.container()
-
     progress = container.progress(0)
 
     for i, step in enumerate(steps):
-
         container.markdown(f"### {step}")
         progress.progress((i + 1) * 20)
+        time.sleep(0.3)
 
-        time.sleep(0.4)
-
-# ================= CLEAN DATA =================
+# ================= CLEANING =================
 def clean(df):
     df = df.drop_duplicates()
 
@@ -78,13 +75,54 @@ def plot_chart(df, chart_type, x, y=None):
 
     return None
 
+# ================= NLP KPI ENGINE =================
+def detect_cols(query, cols):
+    query = query.lower()
+    return [c for c in cols if c.lower() in query]
+
+
+def smart_kpi(df, query):
+    num_cols = df.select_dtypes(include="number").columns
+    all_cols = df.columns
+
+    query = query.lower()
+
+    if "sum" in query or "total" in query:
+        op = "sum"
+    elif "average" in query or "avg" in query:
+        op = "mean"
+    elif "max" in query:
+        op = "max"
+    elif "min" in query:
+        op = "min"
+    else:
+        op = "mean"
+
+    cols = detect_cols(query, all_cols)
+
+    if len(cols) == 0:
+        cols = list(num_cols)
+
+    result = {}
+
+    for col in cols:
+        if col in num_cols:
+            if op == "sum":
+                result[col] = df[col].sum()
+            elif op == "mean":
+                result[col] = df[col].mean()
+            elif op == "max":
+                result[col] = df[col].max()
+            elif op == "min":
+                result[col] = df[col].min()
+
+    return result
+
 # ================= MAIN =================
 if file is not None:
 
-    # STEP 1: PIPELINE START
     smooth_pipeline()
 
-    # LOAD DATA
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
     else:
@@ -92,12 +130,11 @@ if file is not None:
 
     st.success("📥 Data Loaded")
 
-    # CLEAN
     df = clean(df)
+
     st.success("🧹 Data Cleaned")
 
     numeric = df.select_dtypes(include="number").columns
-    categorical = df.select_dtypes(include=["object"]).columns
 
     # ================= DASHBOARD =================
     if page == "🏠 Dashboard":
@@ -111,13 +148,6 @@ if file is not None:
         for i, (k, v) in enumerate(kpis.items()):
             with cols[i % len(cols)]:
                 st.metric(k, f"{v:.2f}")
-
-        st.markdown("---")
-
-        st.subheader("📈 Quick Insights")
-
-        if len(numeric) > 0:
-            st.write("📌 Highest value column:", numeric[0])
 
     # ================= EDA =================
     elif page == "📊 EDA":
@@ -176,7 +206,24 @@ if file is not None:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            st.info("Basic AI prediction using rolling average model")
+    # ================= AI ANALYST =================
+    elif page == "🤖 AI Analyst":
+
+        st.subheader("🤖 Natural Language BI Analyst")
+
+        query = st.text_input("Ask anything (e.g. total sales, avg profit, max revenue)")
+
+        if query:
+
+            result = smart_kpi(df, query)
+
+            if result:
+                st.success("AI Generated KPI Result")
+
+                for k, v in result.items():
+                    st.metric(k, f"{v:.2f}")
+            else:
+                st.warning("No matching KPI found")
 
 else:
-    st.info("📂 Upload dataset to start AI pipeline")
+    st.info("📂 Upload dataset to start AI BI system")
