@@ -11,25 +11,62 @@ st.set_page_config(page_title="AI Sales Analyzer", layout="wide")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ---------- STYLING ----------
+# ---------- MODERN UI STYLING ----------
 st.markdown("""
 <style>
-body { background-color: #0e1117; }
+
+/* Background */
+body {
+    background: linear-gradient(135deg, #0f172a, #020617);
+    color: #e2e8f0;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* Headings */
+h1, h2, h3 {
+    color: #f8fafc;
+}
+
+/* Card */
 .card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    margin-bottom: 15px;
+}
+
+/* Buttons */
+.stButton button {
+    width: 100%;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    border: none;
+    font-weight: 600;
+}
+
+/* Metrics */
+[data-testid="stMetric"] {
     background: rgba(255,255,255,0.05);
     padding: 15px;
     border-radius: 12px;
 }
-.stButton button {
-    width: 100%;
-    border-radius: 8px;
-}
+
+/* Chat */
 [data-testid="stChatMessage"] {
     background: rgba(255,255,255,0.05);
-    border-radius: 10px;
-    padding: 10px;
+    border-radius: 12px;
+    padding: 12px;
     margin-bottom: 10px;
 }
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #020617, #0f172a);
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -47,11 +84,11 @@ file = st.sidebar.file_uploader("Upload CSV", type=["csv","xlsx"])
 
 # ---------- LOAD ----------
 df = None
+conn = sqlite3.connect(":memory:")
 
 def load_data(file):
     return pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
 
-# ---------- AUTO COLUMN DETECTION ----------
 def detect_columns(df):
     cols = {c.lower(): c for c in df.columns}
 
@@ -69,23 +106,20 @@ def detect_columns(df):
         "quantity": find(["quantity","qty","boxes shipped","units"])
     }
 
-# ---------- LOAD DATA ----------
 mapping = None
-conn = sqlite3.connect(":memory:")
 
 if file:
     df = load_data(file)
     df.columns = df.columns.str.strip()
     mapping = detect_columns(df)
 
-    # Load into SQL
     df.to_sql("sales_data", conn, index=False, if_exists="replace")
 
     if mapping["date"]:
         df[mapping["date"]] = pd.to_datetime(df[mapping["date"]], errors="coerce")
 
-# ---------- AI FUNCTION ----------
-def ask_ai(query, df, mapping):
+# ---------- AI ----------
+def ask_ai(query):
     query = query.lower()
 
     if df is None:
@@ -122,26 +156,39 @@ if page == "Dashboard":
     if df is not None:
         amt = mapping["amount"]
 
-        # KPI
         st.subheader("📊 Business KPIs")
         c1, c2, c3 = st.columns(3)
 
-        c1.metric("Rows", len(df))
-        c2.metric("Columns", len(df.columns))
-        c3.metric("Sales", int(df[amt].sum()) if amt else 0)
+        with c1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.metric("Rows", len(df))
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with c2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.metric("Columns", len(df.columns))
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with c3:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.metric("Sales", int(df[amt].sum()) if amt else 0)
+            st.markdown('</div>', unsafe_allow_html=True)
 
         st.dataframe(df.head())
 
-        # BI Charts
         if mapping["date"] and amt:
             trend = df.groupby(mapping["date"])[amt].sum().reset_index()
             fig = px.line(trend, x=mapping["date"], y=amt, title="Sales Trend")
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
         if mapping["country"] and amt:
             region = df.groupby(mapping["country"])[amt].sum().reset_index()
             fig = px.bar(region, x=mapping["country"], y=amt, title="Sales by Country")
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
     else:
         st.warning("Upload file")
@@ -160,7 +207,9 @@ elif page == "Visualizations":
             temp.columns = [col, "count"]
             fig = px.bar(temp, x=col, y="count")
 
+        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     else:
         st.warning("Upload file")
@@ -168,6 +217,7 @@ elif page == "Visualizations":
 # ---------- AI CHAT ----------
 elif page == "AI Chat":
     st.title("💬 AI Chat")
+    st.markdown("### 🤖 AI Assistant")
 
     if df is not None:
 
@@ -180,12 +230,11 @@ elif page == "AI Chat":
             st.session_state.messages.append({"role": "user", "content": query})
             st.chat_message("user").write(query)
 
-            answer = ask_ai(query, df, mapping)
+            answer = ask_ai(query)
 
             st.session_state.messages.append({"role": "assistant", "content": answer})
             st.chat_message("assistant").write(answer)
 
-        # SQL Section
         st.subheader("🧠 Run SQL Query")
 
         sql_query = st.text_area("Write SQL (SELECT * FROM sales_data LIMIT 5)")
