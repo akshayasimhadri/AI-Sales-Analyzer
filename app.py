@@ -5,25 +5,26 @@ import plotly.express as px
 import time
 
 # ================= CONFIG =================
-st.set_page_config(page_title="AI BI Copilot", layout="wide")
-st.title("🤖 AI BI Copilot - Smart Data Analyst")
+st.set_page_config(page_title="AI Enterprise BI Platform", layout="wide")
 
-# ================= SIDEBAR =================
+st.title("🤖 AI Enterprise BI Platform")
+
+# ================= SIDEBAR NAV =================
 page = st.sidebar.radio(
     "📌 Navigation",
-    ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🤖 AI Analyst"]
+    ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🔮 Prediction", "🤖 AI Analyst"]
 )
 
 file = st.sidebar.file_uploader("📂 Upload CSV / Excel", type=["csv", "xlsx"])
 
-# ================= PIPELINE =================
+# ================= PIPELINE ANIMATION =================
 def smooth_pipeline():
     steps = [
-        "📥 Uploading Data",
-        "🧹 Cleaning Dataset",
+        "📥 Loading Data",
+        "🧹 Cleaning Data",
         "🔍 Running Analysis",
-        "📊 Preparing Visuals",
-        "🤖 AI Ready"
+        "📊 Building KPIs",
+        "🤖 Generating Insights"
     ]
 
     container = st.sidebar.container()
@@ -32,7 +33,7 @@ def smooth_pipeline():
     for i, step in enumerate(steps):
         container.markdown(f"### {step}")
         progress.progress((i + 1) * 20)
-        time.sleep(0.2)
+        time.sleep(0.25)
 
 # ================= CLEAN DATA =================
 def clean(df):
@@ -57,52 +58,30 @@ def kpi_engine(df):
 
     return kpis
 
-# ================= VISUAL =================
-def plot_chart(df, chart_type, x, y=None):
-
-    if chart_type == "Bar Chart":
-        return px.bar(df, x=x, y=y)
-
-    if chart_type == "Pie Chart":
-        return px.pie(df, names=x)
-
-    if chart_type == "Line Chart":
-        return px.line(df, x=x, y=y)
-
-    if chart_type == "Histogram":
-        return px.histogram(df, x=x)
-
-    return None
-
-# ================= AI ENGINE (FIXED & RELIABLE) =================
+# ================= AI ANALYST ENGINE =================
 def ai_engine(df, query):
 
     query = query.lower()
-
     cols = df.columns
     num_cols = df.select_dtypes(include="number").columns
 
-    # ---------------- detect date column ----------------
+    # detect date
     date_col = None
     for c in cols:
         if "date" in c.lower():
             date_col = c
 
-    # ---------------- detect metric ----------------
+    # detect metric
     metric = None
-    keywords = ["sales", "amount", "revenue", "profit", "price", "total"]
-
-    for k in keywords:
-        for c in num_cols:
-            if k in c.lower():
-                metric = c
-                break
+    for c in num_cols:
+        if any(k in c.lower() for k in ["sales", "amount", "revenue", "profit"]):
+            metric = c
 
     if metric is None and len(num_cols) > 0:
         metric = num_cols[0]
 
-    # ================= CASE 1: DATE ANALYSIS =================
-    if "date" in query or "time" in query:
+    # ================= DATE ANALYSIS =================
+    if "date" in query:
 
         if date_col is None:
             return {"type": "text", "answer": "❌ No date column found"}
@@ -116,11 +95,11 @@ def ai_engine(df, query):
             "df": grouped,
             "x": date_col,
             "y": metric,
-            "answer": f"📅 Best {date_col}: {best[date_col]} with {best[metric]:.2f}"
+            "answer": f"📅 Best {date_col}: {best[date_col]} → {best[metric]:.2f}"
         }
 
-    # ================= CASE 2: TOP / HIGHEST =================
-    if "top" in query or "highest" in query or "max" in query:
+    # ================= TOP ANALYSIS =================
+    if "top" in query or "highest" in query:
 
         cat_cols = [c for c in cols if df[c].dtype == "object"]
 
@@ -136,10 +115,10 @@ def ai_engine(df, query):
             "df": grouped.reset_index(),
             "x": group_col,
             "y": metric,
-            "answer": f"🏆 Top {group_col} by {metric}"
+            "answer": "🏆 Top analysis generated"
         }
 
-    # ================= CASE 3: GROUP BY =================
+    # ================= GROUP BY =================
     if "by" in query:
 
         for c in cols:
@@ -152,19 +131,16 @@ def ai_engine(df, query):
                     "df": grouped,
                     "x": c,
                     "y": metric,
-                    "answer": f"📊 {metric} grouped by {c}"
+                    "answer": f"📊 Grouped by {c}"
                 }
 
-    # ================= DEFAULT =================
-    total = df[metric].sum()
-    avg = df[metric].mean()
-
+    # ================= FALLBACK =================
     return {
         "type": "text",
-        "answer": f"📊 Total {metric}: {total:.2f} | Avg: {avg:.2f}"
+        "answer": f"📊 Total {metric}: {df[metric].sum():.2f} | Avg: {df[metric].mean():.2f}"
     }
 
-# ================= MAIN APP =================
+# ================= MAIN =================
 if file is not None:
 
     smooth_pipeline()
@@ -174,18 +150,21 @@ if file is not None:
     else:
         df = pd.read_excel(file)
 
-    st.success("📥 Data Loaded Successfully")
+    st.success("📥 Data Loaded")
 
     df = clean(df)
 
-    numeric = df.select_dtypes(include="number").columns
+    numeric_cols = df.select_dtypes(include="number").columns
 
     # ================= DASHBOARD =================
     if page == "🏠 Dashboard":
 
-        st.subheader("📊 KPI Dashboard")
+        st.subheader("📊 Executive AI Dashboard")
 
         kpis = kpi_engine(df)
+
+        # KPI CARDS
+        st.markdown("### 🎯 KPIs")
 
         cols = st.columns(min(4, len(kpis)))
 
@@ -193,60 +172,98 @@ if file is not None:
             with cols[i % len(cols)]:
                 st.metric(k, f"{v:.2f}")
 
+        # MAIN DATA TABLE (IMPORTANT)
+        st.markdown("### 📋 Full Sales Dataset")
+
+        st.dataframe(df, use_container_width=True)
+
+        # KPI TABLE
+        st.markdown("### 📊 KPI Summary Table")
+
+        st.dataframe(pd.DataFrame({
+            "KPI": list(kpis.keys()),
+            "Value": list(kpis.values())
+        }), use_container_width=True)
+
+        # TREND CHARTS
+        st.markdown("### 📈 Trends")
+
+        for col in numeric_cols[:3]:
+            st.plotly_chart(px.line(df, y=col, title=f"{col} Trend"),
+                            use_container_width=True)
+
+        # INSIGHTS
+        st.markdown("### 🧠 Insights")
+
+        for col in numeric_cols[:3]:
+            avg = df[col].mean()
+            st.info(f"📊 {col} average is {avg:.2f}")
+
     # ================= EDA =================
     elif page == "📊 EDA":
 
-        st.subheader("📊 Exploratory Data Analysis")
+        st.subheader("📊 Data Exploration")
 
-        tab1, tab2, tab3 = st.tabs(["Preview", "Missing Values", "Stats"])
+        st.dataframe(df.head(), use_container_width=True)
+        st.dataframe(df.describe())
 
-        with tab1:
-            st.dataframe(df.head(), use_container_width=True)
-
-        with tab2:
-            st.dataframe(df.isnull().sum())
-
-        with tab3:
-            st.dataframe(df.describe())
-
-    # ================= VISUAL =================
+    # ================= VISUALIZATION =================
     elif page == "📈 Visualizations":
 
         st.subheader("📊 Visualization Engine")
 
-        chart_type = st.selectbox("Chart Type",
-                                   ["Bar Chart", "Pie Chart", "Line Chart", "Histogram"])
+        chart = st.selectbox("Chart Type",
+                             ["Bar Chart", "Pie Chart", "Line Chart", "Histogram"])
 
-        x_axis = st.selectbox("X Axis", df.columns)
+        x = st.selectbox("X Axis", df.columns)
 
-        y_axis = None
-        if chart_type in ["Bar Chart", "Line Chart"]:
-            y_axis = st.selectbox("Y Axis", numeric)
+        y = None
+        if chart in ["Bar Chart", "Line Chart"]:
+            y = st.selectbox("Y Axis", numeric_cols)
 
-        fig = plot_chart(df, chart_type, x_axis, y_axis)
+        if chart == "Bar Chart":
+            fig = px.bar(df, x=x, y=y)
+        elif chart == "Pie Chart":
+            fig = px.pie(df, names=x)
+        elif chart == "Line Chart":
+            fig = px.line(df, x=x, y=y)
+        else:
+            fig = px.histogram(df, x=x)
 
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ================= PREDICTION =================
+    elif page == "🔮 Prediction":
+
+        st.subheader("🔮 Simple Forecasting")
+
+        if len(numeric_cols) > 0:
+
+            col = st.selectbox("Select Column", numeric_cols)
+
+            df["Forecast"] = df[col].rolling(3).mean()
+
+            st.plotly_chart(px.line(df, y=[col, "Forecast"]),
+                            use_container_width=True)
 
     # ================= AI ANALYST =================
     elif page == "🤖 AI Analyst":
 
-        st.subheader("🤖 Smart AI Data Analyst")
+        st.subheader("🤖 AI Data Analyst")
 
-        query = st.text_input("Ask anything (e.g. which date has highest sales, top products, sales by region)")
+        query = st.text_input("Ask anything about your data")
 
         if query:
 
             output = ai_engine(df, query)
 
-            st.markdown("### 🧠 AI Result")
             st.success(output["answer"])
 
             if output["type"] == "chart":
-                fig = px.bar(output["df"], x=output["x"], y=output["y"],
-                             title="AI Generated Insight")
-
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(
+                    px.bar(output["df"], x=output["x"], y=output["y"]),
+                    use_container_width=True
+                )
 
 else:
-    st.info("📂 Upload CSV or Excel file to start")
+    st.info("📂 Upload file to start AI Analytics Platform")
