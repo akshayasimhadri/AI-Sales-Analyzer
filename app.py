@@ -8,97 +8,111 @@ import time
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Data Analyst Agent", layout="wide")
 
-st.title("🤖 AI Data Analyst Agent")
-st.write("Upload CSV/Excel and get automatic insights, KPIs, and dashboards")
+st.title("🤖 Production-Grade AI Data Analyst Agent")
 
-# ---------------- API KEY ----------------
 api_key = st.text_input("Enter OpenAI API Key", type="password")
 
-# ---------------- FILE UPLOAD ----------------
-file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+file = st.file_uploader("Upload CSV / Excel", type=["csv", "xlsx"])
 
 # ---------------- SIDEBAR PIPELINE ----------------
 st.sidebar.title("🤖 Processing Pipeline")
 
 steps = [
     "📂 File Loaded",
-    "🔍 Understanding Data",
-    "🧹 Cleaning Data",
-    "📊 KPI Calculation",
-    "📈 Trend Analysis",
-    "🧠 AI Insights",
-    "📊 Visualization Ready"
+    "🔍 Column Detection",
+    "🧹 Data Cleaning",
+    "📊 KPI Engine",
+    "📈 Trend Engine",
+    "🧠 Insight Engine",
+    "📊 Dashboard Ready"
 ]
 
 status = st.sidebar.empty()
 progress = st.sidebar.progress(0)
 
-def update_step(i):
+def step(i):
     progress.progress((i + 1) / len(steps))
     status.markdown(f"### {steps[i]}")
     time.sleep(0.3)
 
 # ---------------- LOAD DATA ----------------
-def load_data(file):
-    if file.name.endswith("csv"):
+def load_file(file):
+    if file.name.endswith(".csv"):
         return pd.read_csv(file)
     else:
         return pd.read_excel(file)
 
-# ---------------- CLEAN DATA ----------------
+# ---------------- COLUMN CLASSIFICATION ----------------
+def detect_columns(df):
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
+    categorical_cols = df.select_dtypes(include="object").columns.tolist()
+
+    return numeric_cols, datetime_cols, categorical_cols
+
+# ---------------- CLEANING ----------------
 def clean_data(df):
     df = df.copy()
 
-    # remove duplicates
     df = df.drop_duplicates()
 
-    # fill missing values
     for col in df.columns:
         if df[col].dtype == "object":
             df[col].fillna("Unknown", inplace=True)
         else:
-            df[col].fillna(df[col].mean(), inplace=True)
+            df[col].fillna(df[col].median(), inplace=True)
 
     return df
 
 # ---------------- KPI ENGINE ----------------
-def generate_kpis(df):
+def generate_kpis(df, numeric_cols):
     kpis = {}
 
-    num_cols = df.select_dtypes(include=np.number).columns
-
-    for col in num_cols:
+    for col in numeric_cols:
         kpis[f"Total {col}"] = df[col].sum()
         kpis[f"Average {col}"] = df[col].mean()
         kpis[f"Max {col}"] = df[col].max()
 
     return kpis
 
-# ---------------- TREND ANALYSIS ----------------
-def trend_analysis(df):
+# ---------------- TREND ENGINE ----------------
+def trend_engine(df, numeric_cols):
     trends = {}
 
-    num_cols = df.select_dtypes(include=np.number).columns
-
-    for col in num_cols:
+    for col in numeric_cols:
         trends[col] = df[col].pct_change().mean()
 
     return trends
 
-# ---------------- AI INSIGHTS ----------------
+# ---------------- SMART GROUPING ----------------
+def smart_grouping(df, categorical_cols, numeric_cols):
+    results = {}
+
+    for cat in categorical_cols:
+        for num in numeric_cols:
+            try:
+                grouped = df.groupby(cat)[num].sum().sort_values(ascending=False)
+                results[f"{cat} vs {num}"] = grouped.head(5)
+            except:
+                pass
+
+    return results
+
+# ---------------- INSIGHTS (AI) ----------------
 def generate_insights(df, api_key):
     openai.api_key = api_key
 
     prompt = f"""
 You are a senior data analyst.
 
-Dataset columns:
-{df.columns.tolist()}
+Dataset summary:
+Columns: {df.columns.tolist()}
+Shape: {df.shape}
 
-Sample data:
+Sample:
 {df.head(10).to_string()}
 
-Provide:
+Give:
 1. Key insights
 2. Trends
 3. Business recommendations
@@ -111,88 +125,79 @@ Provide:
 
     return response["choices"][0]["message"]["content"]
 
-# ---------------- CHARTS ----------------
-def create_charts(df):
+# ---------------- VISUALIZATION ----------------
+def create_charts(df, numeric_cols):
     charts = []
 
-    num_cols = df.select_dtypes(include=np.number).columns
-
-    for col in num_cols[:2]:
+    for col in numeric_cols[:2]:
         fig = px.histogram(df, x=col, title=f"Distribution of {col}")
         charts.append(fig)
 
     return charts
 
-# ---------------- MAIN APP ----------------
+# ---------------- MAIN ----------------
 if file is not None:
 
-    update_step(0)
-    df = load_data(file)
+    step(0)
+    df = load_file(file)
 
-    st.subheader("📄 Raw Data Preview")
+    st.subheader("📄 Raw Data")
     st.dataframe(df.head())
 
-    update_step(1)
+    step(1)
 
-    st.subheader("🧠 Data Understanding")
-    st.write(df.info())
+    numeric_cols, datetime_cols, categorical_cols = detect_columns(df)
 
-    update_step(2)
+    st.subheader("🧠 Column Detection")
+    st.write("Numeric:", numeric_cols)
+    st.write("Datetime:", datetime_cols)
+    st.write("Categorical:", categorical_cols)
+
+    step(2)
 
     df = clean_data(df)
 
     st.subheader("🧹 Cleaned Data")
     st.dataframe(df.head())
 
-    update_step(3)
+    step(3)
 
-    kpis = generate_kpis(df)
+    kpis = generate_kpis(df, numeric_cols)
 
     st.subheader("📊 KPIs")
     for k, v in kpis.items():
-        st.metric(label=k, value=f"{v:.2f}" if isinstance(v, float) else v)
+        st.metric(k, f"{v:.2f}" if isinstance(v, float) else v)
 
-    update_step(4)
+    step(4)
 
-    trends = trend_analysis(df)
+    trends = trend_engine(df, numeric_cols)
 
-    st.subheader("📈 Trend Analysis")
+    st.subheader("📈 Trends")
     st.json(trends)
 
-    update_step(5)
+    grouping = smart_grouping(df, categorical_cols, numeric_cols)
+
+    st.subheader("🧑‍🤝‍🧑 Business Breakdown")
+    for k, v in list(grouping.items())[:3]:
+        st.write(k)
+        st.write(v)
+
+    step(5)
 
     if api_key:
         insights = generate_insights(df, api_key)
         st.subheader("🧠 AI Insights")
         st.success(insights)
-    else:
-        st.warning("Enter API key for AI insights")
 
-    update_step(6)
+    step(6)
 
-    st.subheader("📊 Visualizations")
+    st.subheader("📊 Charts")
+    charts = create_charts(df, numeric_cols)
 
-    charts = create_charts(df)
     for c in charts:
         st.plotly_chart(c, use_container_width=True)
-
-    # ---------------- FINAL REPORT ----------------
-    st.subheader("📄 Auto Report")
-
-    st.markdown(f"""
-### Executive Summary
-
-- Rows: {df.shape[0]}
-- Columns: {df.shape[1]}
-
-### Key KPIs
-{list(kpis.items())[:5]}
-
-### Trend Summary
-{trends}
-""")
 
     st.sidebar.success("✅ Analysis Complete")
 
 else:
-    st.info("Upload a file to start analysis")
+    st.info("Upload file to start analysis")
