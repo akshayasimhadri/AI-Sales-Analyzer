@@ -3,11 +3,12 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import time
+import re
 
 # ================= CONFIG =================
 st.set_page_config(page_title="AI BI Copilot", layout="wide")
 
-st.title("🤖 AI BI Copilot - Natural Language Analytics Engine")
+st.title("🤖 AI BI Copilot - Unlimited KPI + AI Analyst Engine")
 
 # ================= SIDEBAR =================
 page = st.sidebar.radio(
@@ -75,48 +76,91 @@ def plot_chart(df, chart_type, x, y=None):
 
     return None
 
-# ================= NLP KPI ENGINE =================
-def detect_cols(query, cols):
+# ================= AI KPI ENGINE (UNLIMITED) =================
+def ai_kpi_engine(df, query):
+
     query = query.lower()
-    return [c for c in cols if c.lower() in query]
-
-
-def smart_kpi(df, query):
+    cols = df.columns
     num_cols = df.select_dtypes(include="number").columns
-    all_cols = df.columns
 
-    query = query.lower()
+    result_df = df.copy()
 
-    if "sum" in query or "total" in query:
-        op = "sum"
-    elif "average" in query or "avg" in query:
-        op = "mean"
-    elif "max" in query:
-        op = "max"
-    elif "min" in query:
-        op = "min"
-    else:
-        op = "mean"
+    # ================= DETECT DATE =================
+    date_col = None
+    for c in cols:
+        if "date" in c.lower():
+            date_col = c
 
-    cols = detect_cols(query, all_cols)
+    # ================= DETECT METRIC =================
+    metric = None
+    for c in num_cols:
+        if any(k in c.lower() for k in ["sales", "amount", "revenue", "profit"]):
+            metric = c
 
-    if len(cols) == 0:
-        cols = list(num_cols)
+    if metric is None and len(num_cols) > 0:
+        metric = num_cols[0]
 
-    result = {}
+    # ================= TOP / MAX =================
+    if "top" in query or "highest" in query or "max" in query:
 
-    for col in cols:
-        if col in num_cols:
-            if op == "sum":
-                result[col] = df[col].sum()
-            elif op == "mean":
-                result[col] = df[col].mean()
-            elif op == "max":
-                result[col] = df[col].max()
-            elif op == "min":
-                result[col] = df[col].min()
+        if date_col and "date" in query:
 
-    return result
+            grouped = result_df.groupby(date_col)[metric].sum().sort_values(ascending=False)
+
+            return {
+                "type": "single",
+                "answer": f"Best {date_col}: {grouped.index[0]}",
+                "value": float(grouped.iloc[0])
+            }
+
+        cat_cols = [c for c in cols if df[c].dtype == "object"]
+
+        if len(cat_cols) > 0:
+            c = cat_cols[0]
+
+            grouped = result_df.groupby(c)[metric].sum().sort_values(ascending=False).head(5)
+
+            return {
+                "type": "chart",
+                "df": grouped.reset_index(),
+                "x": c,
+                "y": metric,
+                "answer": "Top analysis generated"
+            }
+
+    # ================= GROUP BY =================
+    if "by" in query:
+
+        for c in cols:
+            if c.lower() in query:
+
+                grouped = result_df.groupby(c)[metric].sum().reset_index()
+
+                return {
+                    "type": "chart",
+                    "df": grouped,
+                    "x": c,
+                    "y": metric,
+                    "answer": f"Grouped by {c}"
+                }
+
+    # ================= TIME ANALYSIS =================
+    if date_col:
+
+        grouped = result_df.groupby(date_col)[metric].sum().reset_index()
+
+        return {
+            "type": "chart",
+            "df": grouped,
+            "x": date_col,
+            "y": metric,
+            "answer": "Time-based analysis generated"
+        }
+
+    return {
+        "type": "text",
+        "answer": "I understood the query but need clearer column mapping"
+    }
 
 # ================= MAIN =================
 if file is not None:
@@ -131,8 +175,6 @@ if file is not None:
     st.success("📥 Data Loaded")
 
     df = clean(df)
-
-    st.success("🧹 Data Cleaned")
 
     numeric = df.select_dtypes(include="number").columns
 
@@ -186,11 +228,6 @@ if file is not None:
         if fig:
             st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### 📊 Auto Charts")
-
-        for col in numeric[:3]:
-            st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
-
     # ================= PREDICTION =================
     elif page == "🔮 Prediction":
 
@@ -209,21 +246,22 @@ if file is not None:
     # ================= AI ANALYST =================
     elif page == "🤖 AI Analyst":
 
-        st.subheader("🤖 Natural Language BI Analyst")
+        st.subheader("🤖 Unlimited AI KPI Analyst")
 
-        query = st.text_input("Ask anything (e.g. total sales, avg profit, max revenue)")
+        query = st.text_input("Ask anything (e.g. which date has highest sales, sales by region, top products)")
 
         if query:
 
-            result = smart_kpi(df, query)
+            output = ai_kpi_engine(df, query)
 
-            if result:
-                st.success("AI Generated KPI Result")
+            st.markdown(output["answer"])
 
-                for k, v in result.items():
-                    st.metric(k, f"{v:.2f}")
-            else:
-                st.warning("No matching KPI found")
+            if output["type"] == "single":
+                st.metric("Result", output["value"])
+
+            elif output["type"] == "chart":
+                fig = px.bar(output["df"], x=output["x"], y=output["y"])
+                st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.info("📂 Upload dataset to start AI BI system")
+    st.info("📂 Upload dataset to start AI BI Copilot")
