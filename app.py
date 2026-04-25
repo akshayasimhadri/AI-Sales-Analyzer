@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import time
 
 # ================= CONFIG =================
 st.set_page_config(page_title="AI BI Copilot", layout="wide")
 
-st.title("🤖 AI BI Copilot (Enterprise Dashboard)")
+st.title("🤖 AI ANALYZER (Animated Pipeline Edition)")
 
 # ================= SIDEBAR NAV =================
 page = st.sidebar.radio(
@@ -14,23 +15,30 @@ page = st.sidebar.radio(
     ["🏠 Dashboard", "📊 EDA", "📈 Visualizations", "🔮 Prediction"]
 )
 
-file = st.sidebar.file_uploader("📂 Upload Dataset", type=["csv", "xlsx"])
+file = st.sidebar.file_uploader("📂 Upload CSV / Excel", type=["csv", "xlsx"])
 
-# ================= PIPELINE =================
-def pipeline(step):
-    steps = ["Upload", "Clean", "EDA", "Visualization", "Prediction"]
+# ================= ANIMATED PIPELINE =================
+def smooth_pipeline():
+    steps = [
+        "📥 Uploading Data",
+        "🧹 Cleaning Dataset",
+        "🔍 Running EDA",
+        "📊 Generating Visuals",
+        "🔮 Prediction Engine"
+    ]
 
-    st.sidebar.markdown("### ⚙ Pipeline Progress")
+    container = st.sidebar.container()
 
-    for i, s in enumerate(steps):
-        if i < step:
-            st.sidebar.success("✔ " + s)
-        elif i == step:
-            st.sidebar.info("🔵 " + s)
-        else:
-            st.sidebar.write("⬜ " + s)
+    progress = container.progress(0)
 
-# ================= CLEAN =================
+    for i, step in enumerate(steps):
+
+        container.markdown(f"### {step}")
+        progress.progress((i + 1) * 20)
+
+        time.sleep(0.4)
+
+# ================= CLEAN DATA =================
 def clean(df):
     df = df.drop_duplicates()
 
@@ -53,13 +61,6 @@ def kpi_engine(df):
 
     return kpis
 
-# ================= DATA QUALITY =================
-def data_quality(df):
-    score = 100
-    score -= df.isnull().sum().sum() * 0.1
-    score -= df.duplicated().sum() * 0.1
-    return max(0, min(100, score))
-
 # ================= VISUAL ENGINE =================
 def plot_chart(df, chart_type, x, y=None):
 
@@ -77,22 +78,22 @@ def plot_chart(df, chart_type, x, y=None):
 
     return None
 
-# ================= LOAD =================
+# ================= MAIN =================
 if file is not None:
 
-    pipeline(0)
+    # STEP 1: PIPELINE START
+    smooth_pipeline()
 
-    if file.name.endswith("csv"):
+    # LOAD DATA
+    if file.name.endswith(".csv"):
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file)
 
     st.success("📥 Data Loaded")
 
-    pipeline(1)
-
+    # CLEAN
     df = clean(df)
-
     st.success("🧹 Data Cleaned")
 
     numeric = df.select_dtypes(include="number").columns
@@ -113,15 +114,13 @@ if file is not None:
 
         st.markdown("---")
 
-        st.subheader("🧪 Data Quality Score")
+        st.subheader("📈 Quick Insights")
 
-        score = data_quality(df)
-        st.metric("Score", f"{score:.2f}/100")
+        if len(numeric) > 0:
+            st.write("📌 Highest value column:", numeric[0])
 
     # ================= EDA =================
     elif page == "📊 EDA":
-
-        pipeline(2)
 
         st.subheader("📊 Exploratory Data Analysis")
 
@@ -139,9 +138,7 @@ if file is not None:
     # ================= VISUALIZATION =================
     elif page == "📈 Visualizations":
 
-        pipeline(3)
-
-        st.subheader("📈 Visualization Engine")
+        st.subheader("📊 Visualization Engine")
 
         chart_type = st.selectbox(
             "Choose Chart Type",
@@ -159,19 +156,13 @@ if file is not None:
         if fig:
             st.plotly_chart(fig, use_container_width=True)
 
-        # extra charts
-        st.markdown("### 📊 Auto Insights Charts")
+        st.markdown("### 📊 Auto Charts")
 
         for col in numeric[:3]:
             st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
 
-        if len(numeric) > 1:
-            st.plotly_chart(px.imshow(df[numeric].corr(), text_auto=True))
-
     # ================= PREDICTION =================
     elif page == "🔮 Prediction":
-
-        pipeline(4)
 
         st.subheader("🔮 Prediction Engine")
 
@@ -185,7 +176,7 @@ if file is not None:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            st.info("Simple AI baseline model (rolling forecast)")
+            st.info("Basic AI prediction using rolling average model")
 
 else:
-    st.info("📂 Upload dataset to start AI BI system")
+    st.info("📂 Upload dataset to start AI pipeline")
